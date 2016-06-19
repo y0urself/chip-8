@@ -146,17 +146,17 @@ impl Jit {
             }
             (0x2, _, _, _) => {
                 let addr = instr & 0x0fff;
-                trace!("-> CALL ${:03X}", addr);
+                trace!("-> CALL {:03X}", addr);
                 unimplemented!();
             }
             (0x3, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> SE V{:01X}, ${:02X}", x, k);
+                trace!("-> SE V{:01X}, {:02X}", x, k);
                 unimplemented!();
             }
             (0x4, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> SNE V{:01X}, ${:02X}", x, k);
+                trace!("-> SNE V{:01X}, {:02X}", x, k);
                 unimplemented!();
             }
             (0x5, x, y, 0x0) => {
@@ -165,12 +165,15 @@ impl Jit {
             }
             (0x6, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> LD V{:01X}, ${:02X}", x, k);
-                unimplemented!();
+                trace!("-> LD V{:01X}, {:02X}", x, k);
+
+                // Load the immediate into the allocated host register
+                let host_reg = self.get_host_reg_for(x as u8);
+                self.emit_load_imm8(host_reg, k as u8);
             }
             (0x7, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> ADD V{:01X}, ${:02X}", x, k);
+                trace!("-> ADD V{:01X}, {:02X}", x, k);
                 unimplemented!();
             }
             (0x8, x, y, 0x0) => {
@@ -216,7 +219,11 @@ impl Jit {
             (0xA, _, _, _) => {
                 let nnn = instr & 0x0fff;
                 trace!("-> LD I, {:03X}", nnn);
-                unimplemented!();
+
+                // Currently, we don't allocate a host reg for I, so this just stores to the
+                // `ChipState`.
+                let offset = self.calc_offset(|state| &state.i);
+                self.emit_state_store_u16(offset, nnn);
             }
             (0xB, _, _, _) => {
                 let nnn = instr & 0x0fff;
@@ -317,7 +324,7 @@ impl Jit {
                 break;
             }
 
-            self.pc += 1;
+            self.pc += 2;
         }
 
         self.finalize_function();
@@ -361,13 +368,14 @@ impl Jit {
             let reg = self.free_host_regs.iter().next().unwrap();
             self.free_host_regs.remove(&reg);
             self.reg_map[chip_reg as usize] = Some((reg, self.use_index));
+            debug!("alloc'd {:?} <-> V{:01X}", reg, chip_reg);
 
             if reg.is_callee_saved() {
                 self.emit_reg_save(reg);
             }
 
-            // TODO Generate code to fetch the CHIP-8 register value from the emulator state.
-            error!("CHIP-8 reg fetch NYI");
+            let offset = self.calc_offset(|state| &state.regs[chip_reg as usize]);
+            self.emit_state_load_u8(reg, offset);
 
             return reg;
         }
@@ -384,7 +392,7 @@ impl Jit {
                         .min_by_key(|&(_, (_, used))| used) // get the least recently used one
                         .unwrap();                          // this must exist
 
-        self.spill_chip8_reg(chip_reg);
+        assert!(self.spill_chip8_reg(chip_reg));
 
         // ...and allocate the new one
         self.reg_map[chip_reg as usize] = Some((spilled_host_reg, self.use_index));
@@ -394,7 +402,10 @@ impl Jit {
 
     /// Generates spill code writing the current value of the given CHIP-8 register into the
     /// `ChipState`. Then deallocates the host register assigned to it.
-    fn spill_chip8_reg(&mut self, reg: u8) {
+    ///
+    /// Returns `true` if the register was spilled successfully and `false` if the register isn't
+    /// allocated.
+    fn spill_chip8_reg(&mut self, reg: u8) -> bool {
         // If the register isn't currently allocated to a host register, its value inside the
         // `ChipState` must already be correct.
         if let Some((host_reg, use_idx)) = self.reg_map[reg as usize].take() {
@@ -403,6 +414,9 @@ impl Jit {
 
             let offset = self.calc_offset(|state| &state.regs[reg as usize]);
             self.emit_state_store_u8(offset, host_reg);
+            true
+        } else {
+            false
         }
     }
 
@@ -498,6 +512,14 @@ impl Jit {
         self.code_buffer.write_u16::<LittleEndian>(value).unwrap();
     }
 
+    /// Emits code for loading a constant `u8` value into a host register.
+    fn emit_load_imm8(&mut self, reg: X86Register, value: u8) {
+        // `mov`ing an 8-bit immediate into a register works with `0xB0 + reg` followed by the
+        // immediate.
+
+        self.emit_raw(&[0xB0 | reg.as_reg_field_value(), value]);
+    }
+
     /// Load a constant pointer value into `esi`/`rsi`.
     fn emit_load_esi_ptr<T>(&mut self, ptr: *mut T) {
         // FIXME This also needs 32-bit support
@@ -525,7 +547,7 @@ impl Jit {
         // 0x50 = push r32
         // I think on x64 this will push the corresponding 64-bit register, but that should be fine,
         // too.
-        self.emit_raw(&[0x50 + reg.as_r32_value()]);
+        self.emit_raw(&[0x50 | reg.as_r32_value()]);
 
         self.saved_host_regs.push(reg);
         self.saved_host_regs.push(reg.other_half());

@@ -47,6 +47,9 @@ pub struct ChipState {
     /// played.
     pub sound_timer: u8,
 
+    /// Frame buffer. `true` = "On", `false` = "Off" (initial value).
+    pub fb: [bool; 64 * 32],
+
     _priv: (),
 }
 
@@ -75,6 +78,7 @@ impl Chip8 {
                 i: 0,
                 delay_timer: 0,
                 sound_timer: 0,
+                fb: [false; 64 * 32],
                 _priv: (),
             })),
             cache: CodeCache::new(),

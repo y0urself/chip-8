@@ -10,7 +10,9 @@ extern crate enum_set;
 extern crate minifb;
 
 mod cache;
+mod calls;
 mod chip8;
+mod ext;
 mod hexdump;
 mod jit;
 mod reg;

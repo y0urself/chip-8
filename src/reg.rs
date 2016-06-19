@@ -92,13 +92,13 @@ impl X86Register {
     ///
     /// This is part of the host's calling convention.
     pub fn is_callee_saved(&self) -> bool {
-        if cfg!(all(target_os = "unix", target_arch = "x86_64")) {
+        if cfg!(all(target_family = "unix", target_arch = "x86_64")) {
             // In the System V x64 ABI, `rbx`, `rbp` and `r12-r15` are callee-saved.
             match *self {
                 X86Register::BH | X86Register::BL => true,
                 _ => false,
             }
-        } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        } else if cfg!(all(target_family = "windows", target_arch = "x86_64")) {
             // "The registers RBX, RBP, RDI, RSI, RSP, R12, R13, R14, and R15 are considered
             // nonvolatile and must be saved and restored by a function that uses them."
             match *self {
