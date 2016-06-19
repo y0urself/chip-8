@@ -4,9 +4,6 @@ use enum_set::CLike;
 
 use std::mem;
 
-// XXX Maybe put this in its own crate? I've commonly wanted an easy way of defining these
-// conversions and utilities for C-like enums.
-
 /// List of x86 registers that can be allocated to hold values of CHIP-8 registers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum X86Register {

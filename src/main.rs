@@ -1,5 +1,4 @@
 #[macro_use] extern crate log;
-#[macro_use] extern crate field_offset;
 extern crate cpal;
 extern crate env_logger;
 extern crate byteorder;

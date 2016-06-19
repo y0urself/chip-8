@@ -9,14 +9,15 @@
 //! can easily access any field inside it. Thus, one of the first things a compiled function does is
 //! loading the address of the state into `rsi.`
 
+use calls::{self, Callable};
 use chip8::ChipState;
 use reg::X86Register;
 use hexdump::hexdump;
+use ext;
 
 use byteorder::{LittleEndian, BigEndian, WriteBytesExt, ReadBytesExt};
 use memmap::{Mmap, Protection};
 use enum_set::EnumSet;
-use field_offset::FieldOffset;
 
 use std::mem;
 use std::rc::Rc;
@@ -237,7 +238,10 @@ impl Jit {
             }
             (0xD, x, y, n) => {
                 trace!("-> DRW V{:01X}, V{:01X}, {:01X}", x, y, n);
-                unimplemented!();
+
+                let state = self.state_address();
+                let fptr = ext::draw as extern "C" fn(_, _, _, _);  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64, x as u64, y as u64, n as u64]);
             }
             (0xE, x, 0x9, 0xE) => {
                 trace!("-> SKP V{:01X}", x);
@@ -293,8 +297,13 @@ impl Jit {
     /// Writes the function prolog, which makes sure all invariants held by the JIT are met after
     /// this has executed.
     fn emit_prolog(&mut self) {
+        // `esi` is callee-saved at least on Windows.
+        // FIXME: We should express this in a better way. `reg` contains callee-saved info, but it's
+        // only used for allocable regs.
+        self.emit_rsi_save();
+
         let state_addr = self.state_address() as *mut ChipState;
-        self.emit_load_esi_ptr(state_addr);
+        self.emit_load_rsi_ptr(state_addr);
     }
 
     /// Finalizes a function's JIT code by synchronizing all CHIP-8 registers, restoring all callee-
@@ -305,6 +314,8 @@ impl Jit {
         }
 
         self.emit_restore_regs();
+
+        self.emit_rsi_restore();
 
         // `ret`
         self.emit_raw(&[0xC3]);
@@ -397,6 +408,9 @@ impl Jit {
         // ...and allocate the new one
         self.reg_map[chip_reg as usize] = Some((spilled_host_reg, self.use_index));
 
+        let offset = self.calc_offset(|state| &state.regs[chip_reg as usize]);
+        self.emit_state_load_u8(spilled_host_reg, offset);
+
         spilled_host_reg
     }
 
@@ -409,7 +423,7 @@ impl Jit {
         // If the register isn't currently allocated to a host register, its value inside the
         // `ChipState` must already be correct.
         if let Some((host_reg, use_idx)) = self.reg_map[reg as usize].take() {
-            debug!("spilling reg ${:01X}, allocated to {:?} with a use index of {}",
+            debug!("spilling reg V{:01X}, allocated to {:?} with a use index of {}",
                 reg, host_reg, use_idx);
 
             let offset = self.calc_offset(|state| &state.regs[reg as usize]);
@@ -418,6 +432,44 @@ impl Jit {
         } else {
             false
         }
+    }
+
+    /// Emits code for a function call, passing a number of integer arguments.
+    ///
+    /// Before a function call can be performed, we need write all allocated registers to the
+    /// `ChipState` and deallocate them to ensure consistency.
+    fn emit_call<C: Callable>(&mut self, callee: C, args: &[u64]) {
+        assert_eq!(C::param_count() as usize, args.len());
+
+        // Write registers to the `ChipState`, so the callee can access consistent data.
+        for reg in 0..16 {
+            self.spill_chip8_reg(reg);
+        }
+
+        // Save caller-saved registers in use
+        // FIXME This differs between the 2 calling conventions, but if we save more than we need
+        // to, it doesn't matter for correctness.
+        self.emit_rsi_save();
+
+        // Emit all arguments into the correct registers by emitting 64-bit immediate loads for
+        // them.
+        let regs = calls::get_arg_reg_codes();
+        if regs.len() < args.len() {
+            panic!("not enough registers for call arguments (got {} args, but {} regs)",
+                args.len(), regs.len());
+        }
+
+        for (&arg, &reg) in args.iter().zip(regs) {
+            self.emit_load_imm64(reg, arg);
+        }
+
+        // Emit the actual call. `call` doesn't support 64-bit immediates, so we load the 64-bit
+        // address into `rax` and call that.
+        self.emit_raw(&[0x48, 0xb8]);   // `movabs rax, <ADDRESS>`
+        self.code_buffer.write_u64::<LittleEndian>(callee.get_addr());
+        self.emit_raw(&[0xff, 0xd0]);   // `call rax`
+
+        self.emit_rsi_restore();
     }
 
     fn state(&self) -> Ref<ChipState> {
@@ -520,8 +572,19 @@ impl Jit {
         self.emit_raw(&[0xB0 | reg.as_reg_field_value(), value]);
     }
 
-    /// Load a constant pointer value into `esi`/`rsi`.
-    fn emit_load_esi_ptr<T>(&mut self, ptr: *mut T) {
+    /// Emits code for loading a 64-bit immediate value into a 64-bit register, which is specified
+    /// as the encoding to use in the opcode.
+    ///
+    /// I'd really like to generalize the register abstraction to work for this use case at some
+    /// point.
+    fn emit_load_imm64(&mut self, reg: u8, value: u64) {
+        // Emit a `movabs`
+        self.emit_raw(&[0x48, 0xB8 + reg]);
+        self.code_buffer.write_u64::<LittleEndian>(value).unwrap();
+    }
+
+    /// Load a constant pointer value into `rsi`.
+    fn emit_load_rsi_ptr<T>(&mut self, ptr: *mut T) {
         // FIXME This also needs 32-bit support
 
         // Emit a `movabs`
@@ -558,5 +621,16 @@ impl Jit {
         for host_reg in self.saved_host_regs.iter().rev() {
             unimplemented!();
         }
+    }
+
+    /// FIXME Botch, please remove
+    fn emit_rsi_save(&mut self) {
+        // push rsi
+        self.emit_raw(&[0x56]);
+    }
+
+    fn emit_rsi_restore(&mut self) {
+        // pop rsi
+        self.emit_raw(&[0x5E]);
     }
 }
