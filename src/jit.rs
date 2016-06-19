@@ -169,9 +169,40 @@ impl Jit {
                 unimplemented!();
             }
             (0x3, x, _, _) => {
+                // Skip next instruction if `Vx == kk`.
+                // Load new program counter with `self.pc` or `self.pc + 2` depending on `Vx == kk`.
                 let k = instr & 0xff;
                 trace!("-> SE V{:01X}, {:02X}", x, k);
-                unimplemented!();
+
+                let reg = self.get_host_reg_for(x as u8);
+
+                // We'll use `di` as a scratch register
+                // `mov di, <PC>`
+                self.emit_raw(&[0x66, 0xBF]);
+                self.code_buffer.write_u16::<LittleEndian>(self.pc);
+
+                // `cmp <REG>, <VAL>`
+                self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), k as u8]);
+
+                // Skip the increment if not equal
+                // `jne +<DIST>`
+                let dist = 6;
+                self.emit_raw(&[0x0F, 0x85]);
+                self.code_buffer.write_i32::<LittleEndian>(dist);
+
+                // Increment PC by 2
+                // Just do `inc di` twice
+                self.emit_raw(&[0x66, 0xFF, 0xC7]);
+                self.emit_raw(&[0x66, 0xFF, 0xC7]);
+
+                // Store PC in `ChipState`
+                let offset = self.calc_offset(|state| &state.pc);
+                // `mov [rsi + <OFFSET>], di`
+                self.emit_raw(&[0x66, 0x89, 0xBE]);
+                // FIXME check offset validity
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32);
+
+                true
             }
             (0x4, x, _, _) => {
                 let k = instr & 0xff;
@@ -370,11 +401,10 @@ impl Jit {
         let mut mem = self.state_rc.borrow_mut().mem;
         loop {
             let instr = (&mem[self.pc as usize..]).read_u16::<BigEndian>().unwrap();
+            self.pc += 2;
             if self.compile_instr(instr) {
                 break;
             }
-
-            self.pc += 2;
         }
 
         self.finalize_function();
@@ -649,7 +679,7 @@ impl Jit {
         // Since we can only push 32-bit registers, pushing the low 8 bits of a register will also
         // push the high 8 bits (and vice versa), so we add them both to the saved list.
 
-        if self.saved_host_regs.contains(&reg) {
+        if self.saved_host_regs.contains(&reg) || self.saved_host_regs.contains(&reg.other_half()) {
             // Already saved as part of its other half, or this was called twice with the same reg,
             // which really shouldn't happen.
             debug!("reg {:?} already saved, skipping", reg);
@@ -662,13 +692,14 @@ impl Jit {
         self.emit_raw(&[0x50 | reg.as_r32_value()]);
 
         self.saved_host_regs.push(reg);
-        self.saved_host_regs.push(reg.other_half());
     }
 
     /// Emits code to restore all saved host registers.
     fn emit_restore_regs(&mut self) {
         for host_reg in self.saved_host_regs.iter().rev() {
-            unimplemented!();
+            trace!("restore {:?}", host_reg);
+            // `pop <REG>`
+            self.code_buffer.extend_from_slice(&[0x58 | host_reg.as_r32_value()]);
         }
     }
 
@@ -681,7 +712,7 @@ impl Jit {
     }
 
     fn emit_rsi_restore(&mut self) {
-        self.emit_raw(&[0x5E]); // `pop rsi`
         self.emit_raw(&[0x5F]); // `pop rdi`
+        self.emit_raw(&[0x5E]); // `pop rsi`
     }
 }

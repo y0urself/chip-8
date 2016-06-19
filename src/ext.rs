@@ -5,6 +5,8 @@
 //! NOTE: None of these methods may unwind, since they would immediately unwind into JIT-compiled
 //! code, which is undefined behaviour. We solve that problem by using the `UnwindAborter`, which
 //! will abort the process in its `drop` method if the thread is unwinding.
+//!
+//! FIXME: `UnwindAborter` doesn't work. UB is fine, right? :^)
 
 use chip8::ChipState;
 
@@ -36,5 +38,6 @@ pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
 /// and `Vy`, and sets `VF` to 1 if a previously set pixel was unset, and to 0 if not (collision).
 pub extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
     let _guard = UnwindAborter;
+    debug!("{:?}: DRW V{:01X}, V{:01X}, {}", state, x, y, n);
     unimplemented!();
 }
