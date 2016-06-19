@@ -59,6 +59,18 @@ struct Offset<T> {
     _p: PhantomData<T>,
 }
 
+/// Operations that can be performed on a register and an immediate 8-bit value.
+enum ImmediateOp {
+    Add = 0,
+    Or = 1,
+    Adc = 2,
+    Sbb = 3,
+    And = 4,
+    Sub = 5,
+    Xor = 6,
+    Cmp = 7,
+}
+
 /// JIT compiler entry point.
 ///
 /// This will compile the basic block starting at the current program counter, and return it as a
@@ -114,10 +126,16 @@ impl Jit {
         }
     }
 
+    /// Marks all host regs as free
+    fn reset_free_host_regs(&mut self) {
+        self.free_host_regs = X86Register::iter().collect();
+    }
+
     /// Compiles the given CHIP-8 instruction.
     ///
     /// Returns `true` if the block was finished and compilation is done.
     fn compile_instr(&mut self, instr: u16) -> bool {
+        // FIXME Maybe replace the `bool` with something more type safe?
         trace!("compile_instr ${:04X}", instr);
 
         let nibbles = [
@@ -143,7 +161,7 @@ impl Jit {
 
                 let pc_offset = self.calc_offset(|state| &state.pc);
                 self.emit_state_store_u16(pc_offset, addr);
-                return true;
+                true
             }
             (0x2, _, _, _) => {
                 let addr = instr & 0x0fff;
@@ -171,11 +189,15 @@ impl Jit {
                 // Load the immediate into the allocated host register
                 let host_reg = self.get_host_reg_for(x as u8);
                 self.emit_load_imm8(host_reg, k as u8);
+                false
             }
             (0x7, x, _, _) => {
                 let k = instr & 0xff;
                 trace!("-> ADD V{:01X}, {:02X}", x, k);
-                unimplemented!();
+
+                let reg = self.get_host_reg_for(x as u8);
+                self.emit_imm_op(reg, ImmediateOp::Add, k as u8);
+                false
             }
             (0x8, x, y, 0x0) => {
                 trace!("-> LD V{:01X}, V{:01X}", x, y);
@@ -225,6 +247,7 @@ impl Jit {
                 // `ChipState`.
                 let offset = self.calc_offset(|state| &state.i);
                 self.emit_state_store_u16(offset, nnn);
+                false
             }
             (0xB, _, _, _) => {
                 let nnn = instr & 0x0fff;
@@ -242,6 +265,7 @@ impl Jit {
                 let state = self.state_address();
                 let fptr = ext::draw as extern "C" fn(_, _, _, _);  // XXX this is dumb
                 self.emit_call(fptr, &[state as u64, x as u64, y as u64, n as u64]);
+                false
             }
             (0xE, x, 0x9, 0xE) => {
                 trace!("-> SKP V{:01X}", x);
@@ -269,7 +293,22 @@ impl Jit {
             }
             (0xF, x, 0x1, 0xE) => {
                 trace!("-> ADD I, V{:01X}", x);
-                unimplemented!();
+
+                let reg = self.get_host_reg_for(x as u8);
+                let offset = self.calc_offset(|state| &state.i);
+
+                // 16-bit addition requires the register to be 16-bit too, so we move the reg value
+                // to `di` which is otherwise unused by us. This means we need to save `di` in case
+                // it's callee-saved!
+
+                // `mov di, <REG>` doesn't work since the regs have different sizes, so we'll use
+                // `movzx di, <REG>`.
+                self.emit_raw(&[0x66, 0x0f, 0xb6, 0xf8 | reg.as_reg_field_value()]);
+
+                // `add word ptr [rsi + <OFFSET>], di`
+                self.emit_raw(&[0x66, 0x01, 0xbe]);
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
+                false
             }
             (0xF, x, 0x2, 0x9) => {
                 trace!("-> LD F, V{:01X}", x);
@@ -289,9 +328,9 @@ impl Jit {
             }
             _ => {
                 warn!("ignoring unknown instruction ${:04X}", instr);
+                false
             }
         }
-        false
     }
 
     /// Writes the function prolog, which makes sure all invariants held by the JIT are met after
@@ -426,6 +465,9 @@ impl Jit {
             debug!("spilling reg V{:01X}, allocated to {:?} with a use index of {}",
                 reg, host_reg, use_idx);
 
+            // Mark the reg as free
+            self.free_host_regs.insert(host_reg);
+
             let offset = self.calc_offset(|state| &state.regs[reg as usize]);
             self.emit_state_store_u8(offset, host_reg);
             true
@@ -500,6 +542,13 @@ impl Jit {
     /// Consult your local therapist for information about x86 instructon encoding.
     fn emit_raw(&mut self, code: &[u8]) {
         self.code_buffer.extend_from_slice(code);
+    }
+
+    /// Emits an immediate operation.
+    ///
+    /// See http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm
+    fn emit_imm_op(&mut self, reg: X86Register, op: ImmediateOp, imm: u8) {
+        self.emit_raw(&[0x80, (0b11 << 6) | ((op as u8) << 3) | reg.as_reg_field_value(), imm]);
     }
 
     /// Emits code to load a `u8` from the given `ChipState` field into a register.
@@ -624,13 +673,15 @@ impl Jit {
     }
 
     /// FIXME Botch, please remove
+    /// FIXME FIXME We need to save `rdi` the same way!
     fn emit_rsi_save(&mut self) {
-        // push rsi
-        self.emit_raw(&[0x56]);
+        self.emit_raw(&[0x56]); // `push rsi`
+        self.emit_raw(&[0x57]); // `push rdi`
+        // now not even the name makes sense... please refactor me :'(
     }
 
     fn emit_rsi_restore(&mut self) {
-        // pop rsi
-        self.emit_raw(&[0x5E]);
+        self.emit_raw(&[0x5E]); // `pop rsi`
+        self.emit_raw(&[0x5F]); // `pop rdi`
     }
 }
