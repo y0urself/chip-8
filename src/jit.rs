@@ -367,6 +367,12 @@ impl Jit {
     /// Writes the function prolog, which makes sure all invariants held by the JIT are met after
     /// this has executed.
     fn emit_prolog(&mut self) {
+        // Base pointer logic
+        self.emit_raw(&[
+            0x55,               // `push rbp`   // FIXME this might be unnecessary
+            0x48, 0x89, 0xe5,   // `mov rbp, rsp`
+        ]);
+
         // `esi` is callee-saved at least on Windows.
         // FIXME: We should express this in a better way. `reg` contains callee-saved info, but it's
         // only used for allocable regs.
@@ -387,8 +393,10 @@ impl Jit {
 
         self.emit_rsi_restore();
 
-        // `ret`
-        self.emit_raw(&[0xC3]);
+        self.emit_raw(&[
+            0x5d,   // `pop rbp`
+            0xC3,   // `ret`
+        ]);
     }
 
     /// Compiles the basic block starting at the current program counter.
@@ -511,6 +519,7 @@ impl Jit {
     /// Before a function call can be performed, we need write all allocated registers to the
     /// `ChipState` and deallocate them to ensure consistency.
     fn emit_call<C: Callable>(&mut self, callee: C, args: &[u64]) {
+        debug!("call {:p} ({})", callee.get_addr() as *const (), hexdump(args));
         assert_eq!(C::param_count() as usize, args.len());
 
         // Write registers to the `ChipState`, so the callee can access consistent data.
@@ -522,6 +531,13 @@ impl Jit {
         // FIXME This differs between the 2 calling conventions, but if we save more than we need
         // to, it doesn't matter for correctness.
         self.emit_rsi_save();
+
+        // Align the stack to next 16-byte boundary below current `rsp`.
+        // FIXME This depends on the ABI.
+        // Note that if we were to pass args via stack, we'd have to take their size into account.
+        // First, put at least the low 4 bits into some callee-save reg so we can restore them.
+        self.emit_raw(&[0x40, 0x88, 0xE3]);         // `mov bl, spl`
+        self.emit_raw(&[0x48, 0x83, 0xE4, 0xF0]);   // `and rsp, 0xfffffffffffffff0`
 
         // Emit all arguments into the correct registers by emitting 64-bit immediate loads for
         // them.
@@ -540,6 +556,9 @@ impl Jit {
         self.emit_raw(&[0x48, 0xb8]);   // `movabs rax, <ADDRESS>`
         self.code_buffer.write_u64::<LittleEndian>(callee.get_addr());
         self.emit_raw(&[0xff, 0xd0]);   // `call rax`
+
+        // Restore the low bits of `rsp` so our stack frame is sane again (else, `pop` would break)
+        self.emit_raw(&[0x40, 0x08, 0xDC]); // `or spl, bl`
 
         self.emit_rsi_restore();
     }

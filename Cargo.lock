@@ -8,6 +8,7 @@ dependencies = [
  "enum-set 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.3.0 (git+https://github.com/jonas-schievink/memmap-rs.git?branch=exec)",
  "minifb 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",

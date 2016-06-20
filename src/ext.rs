@@ -13,23 +13,12 @@ use chip8::ChipState;
 use std::thread::panicking;
 use std::process::exit;
 
-struct UnwindAborter;
-
-impl Drop for UnwindAborter {
-    fn drop(&mut self) {
-        if panicking() {
-            error!("aborting due to panic");
-            exit(101);
-        }
-    }
-}
-
 /// Implements the `RND` CHIP-8 instruction.
 ///
 /// `RND Vx, kk` generates a random byte, ANDs it with `kk`, and stores the result in `Vx`.
 pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
-    let _guard = UnwindAborter;
-    unimplemented!();
+    println!("rand unimplemented");
+    exit(102);
 }
 
 /// Implements the `DRW` instruction.
@@ -37,7 +26,7 @@ pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
 /// `DRW Vx, Vy, n` draws an `n`-Byte sprite located at memory location `I` at x/y coordinates `Vx`
 /// and `Vy`, and sets `VF` to 1 if a previously set pixel was unset, and to 0 if not (collision).
 pub extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
-    let _guard = UnwindAborter;
     debug!("{:?}: DRW V{:01X}, V{:01X}, {}", state, x, y, n);
-    unimplemented!();
+
+    // TODO
 }
