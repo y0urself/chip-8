@@ -153,7 +153,37 @@ impl Jit {
                 trace!("-> RET");
 
                 // Set PC to the address on top of the stack, the decrement stack pointer.
-                unimplemented!();
+
+                // Load the stack pointer into `rdi`
+                let sp_offset = self.calc_offset(|state| &state.sp);
+                // `movzx rdi, [ rsi + <SP> ]`
+                self.emit_raw(&[0x48, 0x0F, 0xB6, 0xBE]);
+                self.code_buffer.write_i32::<LittleEndian>(sp_offset.bytes as i32).unwrap();
+
+                // Load the topmost stack slot into `di` and store into PC
+                let stack_offset = self.calc_offset(|state| &state.stack[0]);
+                // `mov di, word ptr [ rsi + rdi * 2 + <OFFSET> ]`
+                self.emit_raw(&[0x66, 0x8B, 0xBC, 0x7E]);
+                self.code_buffer.write_i32::<LittleEndian>(stack_offset.bytes as i32).unwrap();
+                let pc_offset = self.calc_offset(|state| &state.pc);
+                // `mov [rsi + <PC>], di`
+                self.emit_raw(&[0x66, 0x89, 0xBE]);
+                // FIXME check offset validity
+                self.code_buffer.write_i32::<LittleEndian>(pc_offset.bytes as i32).unwrap();
+
+                // Re-load stack pointer since `rdi` was clobbered (FIXME)
+                // `mov dil, byte ptr [ rsi + <SP> ]`
+                self.emit_raw(&[0x40, 0x8A, 0xBE]);
+                self.code_buffer.write_i32::<LittleEndian>(sp_offset.bytes as i32).unwrap();
+
+                self.emit_raw(&[0x40, 0xFE, 0xCF]);         // `dec dil`
+                self.emit_raw(&[0x40, 0x80, 0xE7, 0x0F]);   // `and dil, 0x0f`
+
+                // `mov byte ptr [ rsi + <SP> ], dil`
+                self.emit_raw(&[0x40, 0x88, 0xBE]);
+                self.code_buffer.write_i32::<LittleEndian>(sp_offset.bytes as i32).unwrap();
+
+                true
             }
             (0x1, _, _, _) => {
                 let addr = instr & 0x0fff;
