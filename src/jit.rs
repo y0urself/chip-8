@@ -147,7 +147,11 @@ impl Jit {
         match (nibbles[0], nibbles[1], nibbles[2], nibbles[3]) {
             (0x0, 0x0, 0xE, 0x0) => {
                 trace!("-> CLS");
-                unimplemented!();
+
+                let state = self.state_address();
+                let fptr = ext::clear_screen as unsafe extern "C" fn(_);  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64]);
+                false
             }
             (0x0, 0x0, 0xE, 0xE) => {
                 trace!("-> RET");

@@ -46,3 +46,11 @@ pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
 
     // TODO
 }
+
+/// Implements `CLS`.
+pub unsafe extern "C" fn clear_screen(state: *mut ChipState) {
+    let fb = &mut (*state).fb[..];
+    for pixel in fb {
+        *pixel = false;
+    }
+}

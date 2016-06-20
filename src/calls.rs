@@ -20,6 +20,11 @@ impl<T> Callable for unsafe extern "C" fn(*mut ChipState, u8) -> T {
      fn get_addr(&self) -> u64 { *self as u64 }
 }
 
+impl Callable for unsafe extern "C" fn(*mut ChipState) {
+    fn param_count() -> u8 { 1 }
+    fn get_addr(&self) -> u64 { *self as u64 }
+}
+
 /// Returns the registers in which arguments are passed to functions, as their encoding to specify
 /// in the instruction.
 pub fn get_arg_reg_codes() -> &'static [u8] {
