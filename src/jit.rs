@@ -7,7 +7,9 @@
 //!
 //! The generated code will always store a reference to the `ChipState` in the `rsi` register, so it
 //! can easily access any field inside it. Thus, one of the first things a compiled function does is
-//! loading the address of the state into `rsi.`
+//! loading the address of the state into `rsi`.
+//!
+//! The code can also use `rdi` as a short-lived scratch register.
 
 use calls::{self, Callable};
 use chip8::ChipState;
@@ -166,7 +168,37 @@ impl Jit {
             (0x2, _, _, _) => {
                 let addr = instr & 0x0fff;
                 trace!("-> CALL {:03X}", addr);
-                unimplemented!();
+
+                // Increment stack pointer, store current PC on the stack, then set PC = addr
+                let offset = self.calc_offset(|state| &state.sp);
+
+                // We mask the stack pointer with `0b1111` so we don't have to watch out for
+                // overflows.
+                // `movzx rdi, <SP>`
+                self.emit_raw(&[0x48, 0x0F, 0xB6, 0xBE]);
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
+
+                self.emit_raw(&[0x40, 0xFE, 0xC7]);         // `inc dil`
+                self.emit_raw(&[0x40, 0x80, 0xE7, 0x0F]);   // `and dil, 0x0f`
+
+                // `mov <SP>, dil`
+                self.emit_raw(&[0x40, 0x88, 0xBE]);
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
+
+                // Store current PC on the stack. This requires adding `dil * 2` (`rdi * 2`) to the
+                // start address of the stack. We can do that by using indexed addressing with a
+                // scale of 2.
+                // `mov word ptr [ rsi + rdi * 2 + <STACK> ], <PC>`
+                let offset = self.calc_offset(|state| &state.stack[0]);
+                self.emit_raw(&[0x66, 0xC7, 0x84, 0x7E]);
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
+                self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
+
+                // Set the called function's address
+                let offset = self.calc_offset(|state| &state.pc);
+                self.emit_state_store_u16(offset, addr);
+
+                true
             }
             (0x3, x, _, _) => {
                 // Skip next instruction if `Vx == kk`.

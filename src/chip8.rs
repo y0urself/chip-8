@@ -40,6 +40,11 @@ pub struct ChipState {
     pub pc: u16,
     /// The index register I.
     pub i: u16,
+    /// CHIP-8 stack, containing up to 16 return addresses.
+    pub stack: [u16; 16],
+    // Pointer into `stack`. The starting value doesn't matter, since `CALL` and `RET` will mask
+    // this with `0b1111`.
+    pub sp: u8,
 
     /// Current delay timer value, decremented at 60 Hz when non-zero.
     pub delay_timer: u8,
@@ -76,6 +81,8 @@ impl Chip8 {
                 regs: [0; 16],
                 pc: PROGRAM_START as u16,
                 i: 0,
+                stack: [0; 16],
+                sp: 0,
                 delay_timer: 0,
                 sound_timer: 0,
                 fb: [false; 64 * 32],
