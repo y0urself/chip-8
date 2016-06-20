@@ -2,8 +2,9 @@
 //!
 //! The JIT will generate calls to these methods to implement some opcodes.
 //!
-//! NOTE: None of these methods may unwind, since they would immediately unwind into JIT-compiled
-//! code, which is undefined behaviour.
+//! FIXME: None of these methods may unwind, since they would immediately unwind into JIT-compiled
+//! code, which is undefined behaviour. We should find an easy way to guard against that and abort
+//! the process.
 
 use chip8::ChipState;
 
@@ -16,6 +17,24 @@ use std::process::exit;
 pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
     println!("rand unimplemented");
     exit(102);
+}
+
+/// Implements the `SKP Vx` and `SKNP Vx` instructions.
+///
+/// Returns `true` (`1`) when the key stored in `Vx` is pressed, `false` (`0`) if not.
+pub extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
+    warn!("key_pressed unimplemented");
+    false
+}
+
+/// Implements the `LD Vx, [I]` instruction.
+///
+/// Reads registers `V0` through `Vx` from memory starting at location `I`.
+pub extern "C" fn load_mem(state: *mut ChipState, x: u8) {
+    let state = unsafe { &mut *state };
+    for idx in 0..x+1 {
+        state.regs[idx as usize] = state.mem[state.i as usize + idx as usize];
+    }
 }
 
 /// Implements the `DRW` instruction.

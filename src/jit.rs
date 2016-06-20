@@ -151,6 +151,8 @@ impl Jit {
             }
             (0x0, 0x0, 0xE, 0xE) => {
                 trace!("-> RET");
+
+                // Set PC to the address on top of the stack, the decrement stack pointer.
                 unimplemented!();
             }
             (0x1, _, _, _) => {
@@ -204,31 +206,7 @@ impl Jit {
 
                 let reg = self.get_host_reg_for(x as u8);
 
-                // We'll use `di` as a scratch register
-                // `mov di, <PC>`
-                self.emit_raw(&[0x66, 0xBF]);
-                self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
-
-                // `cmp <REG>, <VAL>`
-                self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), k as u8]);
-
-                // Skip the increment if not equal
-                // `jne +<DIST>`
-                let dist = 6;
-                self.emit_raw(&[0x0F, 0x85]);
-                self.code_buffer.write_i32::<LittleEndian>(dist).unwrap();
-
-                // Increment PC by 2
-                // Just do `inc di` twice
-                self.emit_raw(&[0x66, 0xFF, 0xC7]);
-                self.emit_raw(&[0x66, 0xFF, 0xC7]);
-
-                // Store PC in `ChipState`
-                let offset = self.calc_offset(|state| &state.pc);
-                // `mov [rsi + <OFFSET>], di`
-                self.emit_raw(&[0x66, 0x89, 0xBE]);
-                // FIXME check offset validity
-                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
+                self.emit_skip_if_reg_eq(reg, k as u8);
 
                 true
             }
@@ -260,7 +238,14 @@ impl Jit {
             }
             (0x8, x, y, 0x0) => {
                 trace!("-> LD V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let xr = self.get_host_reg_for(x as u8).as_reg_field_value();
+                let yr = self.get_host_reg_for(y as u8).as_reg_field_value();
+
+                // `mov <XR>, <YR>` (reg-reg-copy)
+                self.emit_raw(&[0x88, (0b11 << 6) | (yr << 3) | xr]);
+
+                false
             }
             (0x8, x, y, 0x1) => {
                 trace!("-> OR V{:01X}, V{:01X}", x, y);
@@ -331,8 +316,17 @@ impl Jit {
                 unimplemented!();
             }
             (0xE, x, 0xA, 0x1) => {
-                trace!("-> SKNP V{:01X}", x);
-                unimplemented!();
+                trace!("-> SKNP V{:01X}", x);   // Skip if key not pressed
+
+                // Call `ext::key_pressed` and check the returned value
+                let state = self.state_address();
+                let fptr = ext::key_pressed as extern "C" fn(_, _) -> bool;  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                // If `al == 0`, the key isn't pressed, so we should skip
+                self.emit_skip_if_reg_eq(X86Register::AL, 0);
+
+                true
             }
             (0xF, x, 0x0, 0x7) => {
                 trace!("-> LD V{:01X}, DT", x);
@@ -383,7 +377,14 @@ impl Jit {
             }
             (0xF, x, 0x6, 0x5) => {
                 trace!("-> LD V{:01X}, [I]", x);
-                unimplemented!();
+
+                // Read registers V0 through Vx from memory starting at location I. We do this in
+                // Rust and just generate a call for now.
+                let state = self.state_address();
+                let fptr = ext::load_mem as extern "C" fn(_, _);
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                false
             }
             _ => {
                 warn!("ignoring unknown instruction ${:04X}", instr);
@@ -454,6 +455,7 @@ impl Jit {
         }
 
         mmap.set_protection(Protection::ReadExecute).unwrap();
+        debug!("code is at {:p}", mmap.ptr());
 
         CompiledBlock {
             state: self.state_rc,
@@ -540,6 +542,37 @@ impl Jit {
         } else {
             false
         }
+    }
+
+    /// Emits code to check if `reg` equals `value` and load PC with `self.pc` or `self.pc + 2`.
+    ///
+    /// This should only be used for terminating instructions.
+    fn emit_skip_if_reg_eq(&mut self, reg: X86Register, value: u8) {
+        // We'll use `di` as a scratch register
+        // `mov di, <PC>`
+        self.emit_raw(&[0x66, 0xBF]);
+        self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
+
+        // `cmp <REG>, <VAL>`
+        self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), value]);
+
+        // Skip the increment if not equal
+        // `jne +<DIST>`
+        let dist = 6;
+        self.emit_raw(&[0x0F, 0x85]);
+        self.code_buffer.write_i32::<LittleEndian>(dist).unwrap();
+
+        // Increment PC by 2
+        // Just do `inc di` twice
+        self.emit_raw(&[0x66, 0xFF, 0xC7]);
+        self.emit_raw(&[0x66, 0xFF, 0xC7]);
+
+        // Store PC in `ChipState`
+        let offset = self.calc_offset(|state| &state.pc);
+        // `mov [rsi + <OFFSET>], di`
+        self.emit_raw(&[0x66, 0x89, 0xBE]);
+        // FIXME check offset validity
+        self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
     }
 
     /// Emits code for a function call, passing a number of integer arguments.
