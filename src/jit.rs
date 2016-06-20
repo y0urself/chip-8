@@ -337,7 +337,7 @@ impl Jit {
                 trace!("-> DRW V{:01X}, V{:01X}, {:01X}", x, y, n);
 
                 let state = self.state_address();
-                let fptr = ext::draw as extern "C" fn(_, _, _, _);  // XXX this is dumb
+                let fptr = ext::draw as unsafe extern "C" fn(_, _, _, _);  // XXX this is dumb
                 self.emit_call(fptr, &[state as u64, x as u64, y as u64, n as u64]);
                 false
             }
@@ -350,7 +350,7 @@ impl Jit {
 
                 // Call `ext::key_pressed` and check the returned value
                 let state = self.state_address();
-                let fptr = ext::key_pressed as extern "C" fn(_, _) -> bool;  // XXX this is dumb
+                let fptr = ext::key_pressed as unsafe extern "C" fn(_, _) -> bool;  // XXX this is dumb
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 // If `al == 0`, the key isn't pressed, so we should skip
@@ -421,7 +421,7 @@ impl Jit {
                 // Read registers V0 through Vx from memory starting at location I. We do this in
                 // Rust and just generate a call for now.
                 let state = self.state_address();
-                let fptr = ext::load_mem as extern "C" fn(_, _);
+                let fptr = ext::load_mem as unsafe extern "C" fn(_, _);
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 false

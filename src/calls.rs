@@ -10,12 +10,12 @@ pub trait Callable {
     fn get_addr(&self) -> u64;
 }
 
-impl Callable for extern "C" fn(*mut ChipState, u8, u8, u8) {
+impl Callable for unsafe extern "C" fn(*mut ChipState, u8, u8, u8) {
      fn param_count() -> u8 { 4 }
      fn get_addr(&self) -> u64 { *self as u64 }
 }
 
-impl<T> Callable for extern "C" fn(*mut ChipState, u8) -> T {
+impl<T> Callable for unsafe extern "C" fn(*mut ChipState, u8) -> T {
      fn param_count() -> u8 { 2 }
      fn get_addr(&self) -> u64 { *self as u64 }
 }

@@ -14,7 +14,7 @@ use std::process::exit;
 ///
 /// `RND Vx, kk` generates a random byte, ANDs it with `kk`, and stores the result in `Vx`.
 #[allow(unused)]    // FIXME
-pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
+pub unsafe extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
     println!("rand unimplemented");
     exit(102);
 }
@@ -22,7 +22,7 @@ pub extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
 /// Implements the `SKP Vx` and `SKNP Vx` instructions.
 ///
 /// Returns `true` (`1`) when the key stored in `Vx` is pressed, `false` (`0`) if not.
-pub extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
+pub unsafe extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
     warn!("key_pressed unimplemented");
     false
 }
@@ -30,8 +30,8 @@ pub extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
 /// Implements the `LD Vx, [I]` instruction.
 ///
 /// Reads registers `V0` through `Vx` from memory starting at location `I`.
-pub extern "C" fn load_mem(state: *mut ChipState, x: u8) {
-    let state = unsafe { &mut *state };
+pub unsafe extern "C" fn load_mem(state: *mut ChipState, x: u8) {
+    let state = &mut *state;
     for idx in 0..x+1 {
         state.regs[idx as usize] = state.mem[state.i as usize + idx as usize];
     }
@@ -41,7 +41,7 @@ pub extern "C" fn load_mem(state: *mut ChipState, x: u8) {
 ///
 /// `DRW Vx, Vy, n` draws an `n`-Byte sprite located at memory location `I` at x/y coordinates `Vx`
 /// and `Vy`, and sets `VF` to 1 if a previously set pixel was unset, and to 0 if not (collision).
-pub extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
+pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
     debug!("{:?}: DRW V{:01X}, V{:01X}, {}", state, x, y, n);
 
     // TODO
