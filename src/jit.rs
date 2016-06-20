@@ -360,19 +360,29 @@ impl Jit {
             }
             (0xF, x, 0x0, 0x7) => {
                 trace!("-> LD V{:01X}, DT", x);
-                unimplemented!();
+
+                let reg = self.get_host_reg_for(x as u8);
+                let offset = self.calc_offset(|state| &state.delay_timer);
+                self.emit_state_load_u8(reg, offset);
+                false
             }
             (0xF, x, 0x0, 0xA) => {
                 trace!("-> LD V{:01X}, K", x);
                 unimplemented!();
             }
-            (0xF, x, 0x1, 0x5) => {
-                trace!("-> LD DT, V{:01X}", x);
-                unimplemented!();
-            }
-            (0xF, x, 0x1, 0x8) => {
-                trace!("-> LD ST, V{:01X}", x);
-                unimplemented!();
+            (0xF, x, 0x1, st_dt @ 0x5) |
+            (0xF, x, 0x1, st_dt @ 0x8) => {
+                let offset = if st_dt == 0x5 {
+                    trace!("-> LD DT, V{:01X}", x);
+                    self.calc_offset(|state| &state.delay_timer)
+                } else {
+                    trace!("-> LD ST, V{:01X}", x);
+                    self.calc_offset(|state| &state.sound_timer)
+                };
+
+                let reg = self.get_host_reg_for(x as u8);
+                self.emit_state_store_u8(offset, reg);
+                false
             }
             (0xF, x, 0x1, 0xE) => {
                 trace!("-> ADD I, V{:01X}", x);
