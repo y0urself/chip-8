@@ -62,6 +62,7 @@ struct Offset<T> {
 }
 
 /// Operations that can be performed on a register and an immediate 8-bit value.
+#[allow(dead_code)] // FIXME
 enum ImmediateOp {
     Add = 0,
     Or = 1,
@@ -126,11 +127,6 @@ impl Jit {
             use_index: 0,
             saved_host_regs: Vec::new(),
         }
-    }
-
-    /// Marks all host regs as free
-    fn reset_free_host_regs(&mut self) {
-        self.free_host_regs = X86Register::iter().collect();
     }
 
     /// Compiles the given CHIP-8 instruction.
@@ -211,7 +207,7 @@ impl Jit {
                 // We'll use `di` as a scratch register
                 // `mov di, <PC>`
                 self.emit_raw(&[0x66, 0xBF]);
-                self.code_buffer.write_u16::<LittleEndian>(self.pc);
+                self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
 
                 // `cmp <REG>, <VAL>`
                 self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), k as u8]);
@@ -220,7 +216,7 @@ impl Jit {
                 // `jne +<DIST>`
                 let dist = 6;
                 self.emit_raw(&[0x0F, 0x85]);
-                self.code_buffer.write_i32::<LittleEndian>(dist);
+                self.code_buffer.write_i32::<LittleEndian>(dist).unwrap();
 
                 // Increment PC by 2
                 // Just do `inc di` twice
@@ -232,7 +228,7 @@ impl Jit {
                 // `mov [rsi + <OFFSET>], di`
                 self.emit_raw(&[0x66, 0x89, 0xBE]);
                 // FIXME check offset validity
-                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32);
+                self.code_buffer.write_i32::<LittleEndian>(offset.bytes as i32).unwrap();
 
                 true
             }
@@ -438,7 +434,7 @@ impl Jit {
         // Copy out `mem` because borrowck complains. Luckily, the memory is quite small, but I
         // wonder if there isn't a better solution (that doesn't involve calling `borrow_mut` every
         // like 3 cycles).
-        let mut mem = self.state_rc.borrow_mut().mem;
+        let mem = self.state_rc.borrow_mut().mem;
         loop {
             let instr = (&mem[self.pc as usize..]).read_u16::<BigEndian>().unwrap();
             self.pc += 2;
@@ -502,7 +498,7 @@ impl Jit {
 
         // No free host register. This means we have to spill an allocated register. We always spill
         // the least recently used register, which is the register with the lowest use index.
-        let (spilled_chip8_reg, (spilled_host_reg, use_idx)) =
+        let (spilled_chip8_reg, (spilled_host_reg, _)) =
             self.reg_map.iter()
                         .enumerate()
                         .filter_map(|(i, item)| {
@@ -512,7 +508,7 @@ impl Jit {
                         .min_by_key(|&(_, (_, used))| used) // get the least recently used one
                         .unwrap();                          // this must exist
 
-        assert!(self.spill_chip8_reg(chip_reg));
+        assert!(self.spill_chip8_reg(spilled_chip8_reg as u8));
 
         // ...and allocate the new one
         self.reg_map[chip_reg as usize] = Some((spilled_host_reg, self.use_index));
@@ -586,7 +582,7 @@ impl Jit {
         // Emit the actual call. `call` doesn't support 64-bit immediates, so we load the 64-bit
         // address into `rax` and call that.
         self.emit_raw(&[0x48, 0xb8]);   // `movabs rax, <ADDRESS>`
-        self.code_buffer.write_u64::<LittleEndian>(callee.get_addr());
+        self.code_buffer.write_u64::<LittleEndian>(callee.get_addr()).unwrap();
         self.emit_raw(&[0xff, 0xd0]);   // `call rax`
 
         // Restore the low bits of `rsp` so our stack frame is sane again (else, `pop` would break)
