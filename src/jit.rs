@@ -74,6 +74,18 @@ enum ImmediateOp {
     Cmp = 7,
 }
 
+/// Condition codes that can be checked by conditional branch x86 instructions.
+///
+/// Not exhaustive, added to when needed.
+///
+/// Source: http://unixwiz.net/techtips/x86-jumps.html
+enum ConditionCode {
+    /// `JE`/`JZ`
+    Eq = 0x04,
+    /// `JNE`/`JNZ`
+    Neq = 0x05,
+}
+
 /// JIT compiler entry point.
 ///
 /// This will compile the basic block starting at the current program counter, and return it as a
@@ -239,15 +251,18 @@ impl Jit {
                 trace!("-> SE V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
-
-                self.emit_skip_if_reg_eq(reg, k as u8);
+                self.emit_skip_if_reg_cmp(reg, ConditionCode::Eq, k as u8);
 
                 true
             }
             (0x4, x, _, _) => {
                 let k = instr & 0xff;
                 trace!("-> SNE V{:01X}, {:02X}", x, k);
-                unimplemented!();
+
+                let reg = self.get_host_reg_for(x as u8);
+                self.emit_skip_if_reg_cmp(reg, ConditionCode::Neq, k as u8);
+
+                true
             }
             (0x5, x, y, 0x0) => {
                 trace!("-> SE V{:01X}, V{:01X}", x, y);
@@ -358,7 +373,7 @@ impl Jit {
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 // If `al == 0`, the key isn't pressed, so we should skip
-                self.emit_skip_if_reg_eq(X86Register::AL, 0);
+                self.emit_skip_if_reg_cmp(X86Register::AL, ConditionCode::Eq, 0);
 
                 true
             }
@@ -588,28 +603,33 @@ impl Jit {
         }
     }
 
-    /// Emits code to check if `reg` equals `value` and load PC with `self.pc` or `self.pc + 2`.
+    /// Emits code to compare `reg` against `value` and load PC with `self.pc` or `self.pc + 2`
+    /// depending on a `ConditionCode`.
     ///
     /// This should only be used for terminating instructions.
-    fn emit_skip_if_reg_eq(&mut self, reg: X86Register, value: u8) {
-        // We'll use `di` as a scratch register
-        // `mov di, <PC>`
+    fn emit_skip_if_reg_cmp(&mut self, reg: X86Register, cc: ConditionCode, value: u8) {
+        // We'll use `di` as a scratch register for PC. Start by loading `self.pc + 2` into `di`
+        // (assuming the test succeeds and we need to skip), then perform the comparison and cond.
+        // branch over code that loads `self.pc` into `di` (in case the branch condition is not
+        // fullfilled we'll load the non-skipping PC).
+
+        // `mov di, <PC+2>`
         self.emit_raw(&[0x66, 0xBF]);
-        self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
+        self.code_buffer.write_u16::<LittleEndian>(self.pc + 2).unwrap();
 
         // `cmp <REG>, <VAL>`
         self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), value]);
 
-        // Skip the increment if not equal
-        // `jne +<DIST>`
-        let dist = 6;
-        self.emit_raw(&[0x0F, 0x85]);
+        // Skip the `self.pc` load if the given `ConditionCode` is fullfilled.
+        // `jX +<DIST>`
+        let dist = 4;
+        self.emit_raw(&[0x0F, 0x80 | cc as u8]);
         self.code_buffer.write_i32::<LittleEndian>(dist).unwrap();
 
-        // Increment PC by 2
-        // Just do `inc di` twice
-        self.emit_raw(&[0x66, 0xFF, 0xC7]);
-        self.emit_raw(&[0x66, 0xFF, 0xC7]);
+        // Load `self.pc` into `di`
+        // `mov di, <PC>`
+        self.emit_raw(&[0x66, 0xBF]);
+        self.code_buffer.write_u16::<LittleEndian>(self.pc).unwrap();
 
         // Store PC in `ChipState`
         let offset = self.calc_offset(|state| &state.pc);
