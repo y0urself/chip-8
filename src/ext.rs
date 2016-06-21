@@ -117,22 +117,29 @@ pub unsafe extern "C" fn hex_sprite_address(state: *mut ChipState, x: u8) {
 /// `DRW Vx, Vy, n` draws an `n`-Byte sprite located at memory location `I` at x/y coordinates `Vx`
 /// and `Vy`, and sets `VF` to 1 if a previously set pixel was unset, and to 0 if not (collision).
 pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
-    debug!("{:?}: DRW V{:01X}, V{:01X}, {}", state, x, y, n);
-
     let state = &mut *state;
     let x = state.regs[x as usize];
     let y = state.regs[y as usize];
 
     // FIXME: "If the sprite is positioned so part of it is outside the coordinates of the display,
     // it wraps around to the opposite side of the screen.""
+    let mut cleared = false;
     for i in 0..n {
         // Draw 8-pixel sprite line to `x..x+8`
         let data = state.mem[state.i as usize + i as usize];
         for xoff in 0..8 {
             // I as usize can't as usize understand as usize your accent as usize.
-            state.fb[(y as usize + i as usize) * 64 + x as usize + xoff as usize] = data & (0x80 >> xoff) != 0;
+            let mut pixref = &mut state.fb[(y as usize + i as usize) * 64 + x as usize + xoff as usize];
+            let newval = data & (0x80 >> xoff) != 0;
+            if *pixref && newval {
+                // Set pixel will be cleared
+                cleared = true;
+            }
+            *pixref ^= newval;
         }
     }
+
+    state.regs[0xF] = if cleared { 1 } else { 0 };
 }
 
 /// Implements `CLS`.
