@@ -444,7 +444,16 @@ impl Jit {
             }
             (0xF, x, 0x2, 0x9) => {
                 trace!("-> LD F, V{:01X}", x);
-                unimplemented!();
+                // Set I = location of sprite for digit `Vx`.
+                // Every sprite is 5 bytes large, and they are stored in the beginning of RAM as a
+                // linear array, so we could just do a multiplication, but let's invoke a function
+                // for now (FIXME).
+
+                let state = self.state_address();
+                let fptr = ext::binary_to_bcd as unsafe extern "C" fn(_, _);
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                false
             }
             (0xF, x, 0x3, 0x3) => {
                 trace!("-> LD B, V{:01X}", x);

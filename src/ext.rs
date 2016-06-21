@@ -73,6 +73,17 @@ pub unsafe extern "C" fn binary_to_bcd(state: *mut ChipState, x: u8) {
     state.inv_len = 3;
 }
 
+/// Implements the `LD F, Vx` instruction.
+///
+/// Sets I = location of sprite for digit Vx.
+pub unsafe extern "C" fn hex_sprite_address(state: *mut ChipState, x: u8) {
+    let state = &mut *state;
+    let value = state.regs[x as usize];
+
+    // 5 Bytes per sprite
+    state.i = (value as u16 & 0xff) * 5;
+}
+
 /// Implements the `DRW` instruction.
 ///
 /// `DRW Vx, Vy, n` draws an `n`-Byte sprite located at memory location `I` at x/y coordinates `Vx`
