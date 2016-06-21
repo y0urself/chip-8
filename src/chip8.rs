@@ -60,8 +60,11 @@ pub struct ChipState {
     /// Frame buffer. `true` = "On", `false` = "Off" (initial value).
     pub fb: [bool; 64 * 32],
 
-    /// Set by JIT-compiled code when we need to invalidate `inv_len` bytes of `mem` starting at
-    /// `i`. This must be checked after every block is executed.
+    /// Set by JIT-compiled code when we need to invalidate the JIT cache. Stores the starting
+    /// address in `mem`.
+    pub inv_start: u16,
+    /// Set by JIT-compiled code when we need to invalidate the JIT cache. Stores the number of
+    /// bytes to invalidate. This needs to be checked after every block is run.
     pub inv_len: u8,
 
     pub win: Window,
@@ -98,6 +101,7 @@ impl Chip8 {
                 delay_timer: 0,
                 sound_timer: 0,
                 fb: [false; 64 * 32],
+                inv_start: 0,
                 inv_len: 0,
                 win: Window::new("KOOL-8", 64, 32, WindowOptions {
                     borderless: false,
@@ -165,7 +169,7 @@ impl Chip8 {
 
             {
                 let mut state = self.state.borrow_mut();
-                let inv_start = state.i;
+                let inv_start = state.inv_start;
                 let inv_len = &mut state.inv_len;
                 if *inv_len != 0 {
                     // JIT cache invalidation required

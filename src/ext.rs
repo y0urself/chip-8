@@ -79,6 +79,9 @@ pub unsafe extern "C" fn load_mem(state: *mut ChipState, x: u8) {
     for idx in 0..x+1 {
         state.regs[idx as usize] = state.mem[state.i as usize + idx as usize];
     }
+
+    // "I is set to I + X + 1 after operation"
+    state.i = state.i + x as u16 + 1;
 }
 
 /// Implements the `LD [I], Vx` instruction.
@@ -93,7 +96,11 @@ pub unsafe extern "C" fn store_mem(state: *mut ChipState, x: u8) {
         state.mem[state.i as usize + idx as usize] = state.regs[idx as usize];
     }
 
+    state.inv_start = state.i;
     state.inv_len = x + 1;
+
+    // "I is set to I + X + 1 after operation"
+    state.i = state.i + x as u16 + 1;
 }
 
 /// Implements the `LD B, Vx` instruction.
@@ -108,6 +115,7 @@ pub unsafe extern "C" fn binary_to_bcd(state: *mut ChipState, x: u8) {
     state.mem[state.i as usize + 1] = (value % 100) / 10;
     state.mem[state.i as usize + 2] = value % 10;
 
+    state.inv_start = state.i;
     state.inv_len = 3;
 }
 
