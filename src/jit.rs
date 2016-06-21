@@ -329,7 +329,18 @@ impl Jit {
             }
             (0x8, x, y, 0x5) => {   // VF = !Borrow
                 trace!("-> SUB V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                // For setting `VF`, we can use `setnc` (set byte if not carry - carry is borrow on
+                // x86). Note that `setnc` is the same thing as `setae` (above or equal).
+                let vf = self.get_host_reg_for(0xf);
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_reg_op(x, AluOp::Sub, y);
+
+                // `setnc <VF>`
+                self.emit_raw(&[0x0F, 0x93, 0xC0 | vf.as_reg_field_value()]);
+
+                false
             }
             (0x8, x, y, 0x6) => {   // VF = LSb of Vx
                 trace!("-> SHR V{:01X}   ; V{:01X}", x, y);
