@@ -146,7 +146,9 @@ impl Jit {
 
     /// Compiles the given CHIP-8 instruction.
     ///
-    /// Returns `true` if the block was finished and compilation is done.
+    /// Returns `true` if the block was finished and compilation is done. Note that the
+    /// corresponding `match` arm is responsible for setting the program counter to the correct
+    /// value.
     fn compile_instr(&mut self, instr: u16) -> bool {
         // FIXME Maybe replace the `bool` with something more type safe?
         debug!("compile_instr ${:04X}", instr);
@@ -506,6 +508,12 @@ impl Jit {
                 let fptr = ext::binary_to_bcd as unsafe extern "C" fn(_, _);
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
+                // Set PC since we're terminating the block (since the cache needs to be
+                // invalidated)
+                let pc_offset = self.calc_offset(|state| &state.pc);
+                let new_pc = self.pc;
+                self.emit_state_store_u16(pc_offset, new_pc);
+
                 true
             }
             (0xF, x, 0x5, 0x5) => {
@@ -520,6 +528,12 @@ impl Jit {
                 let state = self.state_address();
                 let fptr = ext::store_mem as unsafe extern "C" fn(_, _);
                 self.emit_call(fptr, &[state as u64, x as u64]);
+
+                // Set PC since we're terminating the block (since the cache needs to be
+                // invalidated)
+                let pc_offset = self.calc_offset(|state| &state.pc);
+                let new_pc = self.pc;
+                self.emit_state_store_u16(pc_offset, new_pc);
 
                 true    // We need to return to the dispatcher immediately
             }
