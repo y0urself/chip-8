@@ -432,7 +432,18 @@ impl Jit {
             }
             (0xF, x, 0x5, 0x5) => {
                 trace!("-> LD [I], V{:01X}", x);
-                unimplemented!();
+
+                // Store registers V0 through Vx to memory starting at location I. This can change
+                // CHIP-8 code we already compiled, so we need to invalidate these code segments.
+                // `store_mem` does this by setting a flag inside the state, we then need to return
+                // to the dispatch loop so it can do the invalidation.
+                // FIXME Figure out a better way to do this that doesn't require us to check the
+                // flag in a very hot loop.
+                let state = self.state_address();
+                let fptr = ext::store_mem as unsafe extern "C" fn(_, _);
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                true    // We need to return to the dispatcher immediately
             }
             (0xF, x, 0x6, 0x5) => {
                 trace!("-> LD V{:01X}, [I]", x);

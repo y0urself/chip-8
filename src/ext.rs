@@ -37,6 +37,21 @@ pub unsafe extern "C" fn load_mem(state: *mut ChipState, x: u8) {
     }
 }
 
+/// Implements the `LD [I], Vx` instruction.
+///
+/// Stores registers `V0` through `Vx` to memory starting at location `I`.
+///
+/// Since this kind of write can overwrite machine code (not that it *should* do that), we might
+/// need to invalidate JIT-compiled code from that RAM section.
+pub unsafe extern "C" fn store_mem(state: *mut ChipState, x: u8) {
+    let state = &mut *state;
+    for idx in 0..x+1 {
+        state.mem[state.i as usize + idx as usize] = state.regs[idx as usize];
+    }
+
+    state.inv_len = x + 1;
+}
+
 /// Implements the `DRW` instruction.
 ///
 /// `DRW Vx, Vy, n` draws an `n`-Byte sprite located at memory location `I` at x/y coordinates `Vx`
