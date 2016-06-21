@@ -27,6 +27,12 @@ pub unsafe extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
     false
 }
 
+/// Implements the `LD Vx, K` instruction.
+pub unsafe extern "C" fn wait_key_press(_state: *mut ChipState, _x: u8) {
+    warn!("wait_key_press unimplemented, entering infinite loop");
+    loop {}
+}
+
 /// Implements the `LD Vx, [I]` instruction.
 ///
 /// Reads registers `V0` through `Vx` from memory starting at location `I`.

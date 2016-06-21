@@ -394,7 +394,12 @@ impl Jit {
             }
             (0xF, x, 0x0, 0xA) => {
                 trace!("-> LD V{:01X}, K", x);
-                unimplemented!();
+                // Wait for a keypress and store the pressed key in `Vx`
+
+                let state = self.state_address();
+                let fptr = ext::wait_key_press as unsafe extern "C" fn(_, _);  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64, x as u64]);
+                false
             }
             (0xF, x, 0x1, st_dt @ 0x5) |
             (0xF, x, 0x1, st_dt @ 0x8) => {
