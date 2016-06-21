@@ -61,9 +61,12 @@ struct Offset<T> {
     _p: PhantomData<T>,
 }
 
-/// Operations that can be performed on a register and an immediate 8-bit value.
+/// Arithmetic/Logic operations.
+///
+/// For informations about the encoding of operations on immediates, see
+/// http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm.
 #[allow(dead_code)] // FIXME
-enum ImmediateOp {
+enum AluOp {
     Add = 0,
     Or = 1,
     Adc = 2,
@@ -282,7 +285,7 @@ impl Jit {
                 trace!("-> ADD V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
-                self.emit_imm_op(reg, ImmediateOp::Add, k as u8);
+                self.emit_imm_op(reg, AluOp::Add, k as u8);
                 false
             }
             (0x8, x, y, 0x0) => {
@@ -306,7 +309,11 @@ impl Jit {
             }
             (0x8, x, y, 0x3) => {
                 trace!("-> XOR V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_reg_op(x, AluOp::Xor, y);
+                false
             }
             (0x8, x, y, 0x4) => {   // VF = Carry (0 or 1)
                 trace!("-> ADD V{:01X}, V{:01X}", x, y);
@@ -729,11 +736,23 @@ impl Jit {
         self.code_buffer.extend_from_slice(code);
     }
 
-    /// Emits an immediate operation.
+    /// Emits an arithmetic/logic operation using an immediate as the second operand.
     ///
     /// See http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm
-    fn emit_imm_op(&mut self, reg: X86Register, op: ImmediateOp, imm: u8) {
+    fn emit_imm_op(&mut self, reg: X86Register, op: AluOp, imm: u8) {
         self.emit_raw(&[0x80, (0b11 << 6) | ((op as u8) << 3) | reg.as_reg_field_value(), imm]);
+    }
+
+    /// Emits an arithmetic/logic operation on two registers, storing the result in the first one.
+    fn emit_reg_op(&mut self, dest: X86Register, op: AluOp, src: X86Register) {
+        // Turning an `AluOp` into an instruction is simple: `AluOp << 3` gives us the first byte,
+        // the second byte is a ModR/M byte storing the source register (second operand) in the
+        // `REG` field and the destination register (first operand) in `R/M`. `MOD` is `0b11` to
+        // indicate a reg-reg operation.
+        self.emit_raw(&[
+            (op as u8) << 3,
+            (0b11 << 6) | (src.as_reg_field_value() << 3) | dest.as_reg_field_value()
+        ]);
     }
 
     /// Emits code to load a `u8` from the given `ChipState` field into a register.
