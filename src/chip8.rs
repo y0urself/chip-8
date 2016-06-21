@@ -5,6 +5,8 @@ use minifb::{Window, WindowOptions, Scale};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::process;
+use std::time::{Instant, Duration};
+use std::thread::sleep;
 
 static CHIP8_FONT: [u8; 5 * 16] = [
     0xf0, 0x90, 0x90, 0x90, 0xf0,   // 0
@@ -70,6 +72,7 @@ pub struct ChipState {
 pub struct Chip8 {
     state: Rc<RefCell<ChipState>>,
     cache: CodeCache,
+    last_tick: Instant,
 }
 
 impl Chip8 {
@@ -105,13 +108,11 @@ impl Chip8 {
                 _priv: (),
             })),
             cache: CodeCache::new(),
+            last_tick: Instant::now(),
         }
     }
 
     /// Called in intervals by the main loop
-    ///
-    /// FIXME We should dictate timing from here by forcing a 60 Hz execution interval and then
-    /// adjust BLOCKS_PER_TICK accordingly.
     fn tick(&mut self) {
         let mut state = self.state.borrow_mut();
 
@@ -136,6 +137,12 @@ impl Chip8 {
         if state.sound_timer > 0 {
             state.sound_timer -= 1;
         }
+
+        // Sleep so we tick at 60 Hz
+        let left_time = Duration::from_millis(1000 / 60) - self.last_tick.elapsed();
+        sleep(left_time);
+
+        self.last_tick = Instant::now();
     }
 
     /// Begins execution of CHIP-8 instructions.
