@@ -149,7 +149,7 @@ impl Jit {
     /// Returns `true` if the block was finished and compilation is done.
     fn compile_instr(&mut self, instr: u16) -> bool {
         // FIXME Maybe replace the `bool` with something more type safe?
-        trace!("compile_instr ${:04X}", instr);
+        debug!("compile_instr ${:04X}", instr);
 
         let nibbles = [
             (instr & 0xf000) >> 12,
@@ -161,7 +161,7 @@ impl Jit {
         // me want slice patterns
         match (nibbles[0], nibbles[1], nibbles[2], nibbles[3]) {
             (0x0, 0x0, 0xE, 0x0) => {
-                trace!("-> CLS");
+                debug!("-> CLS");
 
                 let state = self.state_address();
                 let fptr = ext::clear_screen as unsafe extern "C" fn(_);  // XXX this is dumb
@@ -169,7 +169,7 @@ impl Jit {
                 false
             }
             (0x0, 0x0, 0xE, 0xE) => {
-                trace!("-> RET");
+                debug!("-> RET");
 
                 // Set PC to the address on top of the stack, the decrement stack pointer.
 
@@ -206,7 +206,7 @@ impl Jit {
             }
             (0x1, _, _, _) => {
                 let addr = instr & 0x0fff;
-                trace!("-> JP ${:03X}", addr);
+                debug!("-> JP ${:03X}", addr);
 
                 let pc_offset = self.calc_offset(|state| &state.pc);
                 self.emit_state_store_u16(pc_offset, addr);
@@ -214,7 +214,7 @@ impl Jit {
             }
             (0x2, _, _, _) => {
                 let addr = instr & 0x0fff;
-                trace!("-> CALL {:03X}", addr);
+                debug!("-> CALL {:03X}", addr);
 
                 // Increment stack pointer, store current PC on the stack, then set PC = addr
                 let offset = self.calc_offset(|state| &state.sp);
@@ -251,7 +251,7 @@ impl Jit {
                 // Skip next instruction if `Vx == kk`.
                 // Load new program counter with `self.pc` or `self.pc + 2` depending on `Vx == kk`.
                 let k = instr & 0xff;
-                trace!("-> SE V{:01X}, {:02X}", x, k);
+                debug!("-> SE V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
                 self.emit_skip_if_reg_cmp(reg, ConditionCode::Eq, k as u8);
@@ -260,7 +260,7 @@ impl Jit {
             }
             (0x4, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> SNE V{:01X}, {:02X}", x, k);
+                debug!("-> SNE V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
                 self.emit_skip_if_reg_cmp(reg, ConditionCode::Neq, k as u8);
@@ -268,12 +268,12 @@ impl Jit {
                 true
             }
             (0x5, x, y, 0x0) => {
-                trace!("-> SE V{:01X}, V{:01X}", x, y);
+                debug!("-> SE V{:01X}, V{:01X}", x, y);
                 unimplemented!();
             }
             (0x6, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> LD V{:01X}, {:02X}", x, k);
+                debug!("-> LD V{:01X}, {:02X}", x, k);
 
                 // Load the immediate into the allocated host register
                 let host_reg = self.get_host_reg_for(x as u8);
@@ -282,14 +282,14 @@ impl Jit {
             }
             (0x7, x, _, _) => {
                 let k = instr & 0xff;
-                trace!("-> ADD V{:01X}, {:02X}", x, k);
+                debug!("-> ADD V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
                 self.emit_imm_op(reg, AluOp::Add, k as u8);
                 false
             }
             (0x8, x, y, 0x0) => {
-                trace!("-> LD V{:01X}, V{:01X}", x, y);
+                debug!("-> LD V{:01X}, V{:01X}", x, y);
 
                 let xr = self.get_host_reg_for(x as u8).as_reg_field_value();
                 let yr = self.get_host_reg_for(y as u8).as_reg_field_value();
@@ -300,7 +300,7 @@ impl Jit {
                 false
             }
             (0x8, x, y, 0x1) => {
-                trace!("-> OR V{:01X}, V{:01X}", x, y);
+                debug!("-> OR V{:01X}, V{:01X}", x, y);
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
@@ -308,7 +308,7 @@ impl Jit {
                 false
             }
             (0x8, x, y, 0x2) => {
-                trace!("-> AND V{:01X}, V{:01X}", x, y);
+                debug!("-> AND V{:01X}, V{:01X}", x, y);
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
@@ -316,7 +316,7 @@ impl Jit {
                 false
             }
             (0x8, x, y, 0x3) => {
-                trace!("-> XOR V{:01X}, V{:01X}", x, y);
+                debug!("-> XOR V{:01X}, V{:01X}", x, y);
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
@@ -324,11 +324,11 @@ impl Jit {
                 false
             }
             (0x8, x, y, 0x4) => {   // VF = Carry (0 or 1)
-                trace!("-> ADD V{:01X}, V{:01X}", x, y);
+                debug!("-> ADD V{:01X}, V{:01X}", x, y);
                 unimplemented!();
             }
             (0x8, x, y, 0x5) => {   // VF = !Borrow
-                trace!("-> SUB V{:01X}, V{:01X}", x, y);
+                debug!("-> SUB V{:01X}, V{:01X}", x, y);
 
                 // For setting `VF`, we can use `setnc` (set byte if not carry - carry is borrow on
                 // x86). Note that `setnc` is the same thing as `setae` (above or equal).
@@ -343,24 +343,24 @@ impl Jit {
                 false
             }
             (0x8, x, y, 0x6) => {   // VF = LSb of Vx
-                trace!("-> SHR V{:01X}   ; V{:01X}", x, y);
+                debug!("-> SHR V{:01X}   ; V{:01X}", x, y);
                 unimplemented!();
             }
             (0x8, x, y, 0x7) => {   // VF = !Borrow
-                trace!("-> SUBN V{:01X}, V{:01X}", x, y);
+                debug!("-> SUBN V{:01X}, V{:01X}", x, y);
                 unimplemented!();
             }
             (0x8, x, y, 0xE) => {   // VF = MSb of Vx
-                trace!("-> SHL V{:01X}   ; V{:01X}", x, y);
+                debug!("-> SHL V{:01X}   ; V{:01X}", x, y);
                 unimplemented!();
             }
             (0x9, x, y, 0x0) => {
-                trace!("-> SNE V{:01X}, V{:01X}", x, y);
+                debug!("-> SNE V{:01X}, V{:01X}", x, y);
                 unimplemented!();
             }
             (0xA, _, _, _) => {
                 let nnn = instr & 0x0fff;
-                trace!("-> LD I, {:03X}", nnn);
+                debug!("-> LD I, {:03X}", nnn);
 
                 // Currently, we don't allocate a host reg for I, so this just stores to the
                 // `ChipState`.
@@ -370,12 +370,12 @@ impl Jit {
             }
             (0xB, _, _, _) => {
                 let nnn = instr & 0x0fff;
-                trace!("-> JP V0, {:03X}", nnn);
+                debug!("-> JP V0, {:03X}", nnn);
                 unimplemented!();
             }
             (0xC, x, _, _) => {
                 let k = instr & 0x00ff;
-                trace!("-> RND V{:01X}, {:02X}", x, k);
+                debug!("-> RND V{:01X}, {:02X}", x, k);
 
                 let state = self.state_address();
                 let fptr = ext::rand as unsafe extern "C" fn(_, _, _);  // XXX this is dumb
@@ -384,7 +384,7 @@ impl Jit {
                 false
             }
             (0xD, x, y, n) => {
-                trace!("-> DRW V{:01X}, V{:01X}, {:01X}", x, y, n);
+                debug!("-> DRW V{:01X}, V{:01X}, {:01X}", x, y, n);
 
                 let state = self.state_address();
                 let fptr = ext::draw as unsafe extern "C" fn(_, _, _, _);  // XXX this is dumb
@@ -392,11 +392,11 @@ impl Jit {
                 false
             }
             (0xE, x, 0x9, 0xE) => {
-                trace!("-> SKP V{:01X}", x);
+                debug!("-> SKP V{:01X}", x);
                 unimplemented!();
             }
             (0xE, x, 0xA, 0x1) => {
-                trace!("-> SKNP V{:01X}", x);   // Skip if key not pressed
+                debug!("-> SKNP V{:01X}", x);   // Skip if key not pressed
 
                 // Call `ext::key_pressed` and check the returned value
                 let state = self.state_address();
@@ -409,7 +409,7 @@ impl Jit {
                 true
             }
             (0xF, x, 0x0, 0x7) => {
-                trace!("-> LD V{:01X}, DT", x);
+                debug!("-> LD V{:01X}, DT", x);
 
                 let reg = self.get_host_reg_for(x as u8);
                 let offset = self.calc_offset(|state| &state.delay_timer);
@@ -417,7 +417,7 @@ impl Jit {
                 false
             }
             (0xF, x, 0x0, 0xA) => {
-                trace!("-> LD V{:01X}, K", x);
+                debug!("-> LD V{:01X}, K", x);
                 // Wait for a keypress and store the pressed key in `Vx`
 
                 let state = self.state_address();
@@ -428,10 +428,10 @@ impl Jit {
             (0xF, x, 0x1, st_dt @ 0x5) |
             (0xF, x, 0x1, st_dt @ 0x8) => {
                 let offset = if st_dt == 0x5 {
-                    trace!("-> LD DT, V{:01X}", x);
+                    debug!("-> LD DT, V{:01X}", x);
                     self.calc_offset(|state| &state.delay_timer)
                 } else {
-                    trace!("-> LD ST, V{:01X}", x);
+                    debug!("-> LD ST, V{:01X}", x);
                     self.calc_offset(|state| &state.sound_timer)
                 };
 
@@ -440,7 +440,7 @@ impl Jit {
                 false
             }
             (0xF, x, 0x1, 0xE) => {
-                trace!("-> ADD I, V{:01X}", x);
+                debug!("-> ADD I, V{:01X}", x);
 
                 let reg = self.get_host_reg_for(x as u8);
                 let offset = self.calc_offset(|state| &state.i);
@@ -459,20 +459,20 @@ impl Jit {
                 false
             }
             (0xF, x, 0x2, 0x9) => {
-                trace!("-> LD F, V{:01X}", x);
+                debug!("-> LD F, V{:01X}", x);
                 // Set I = location of sprite for digit `Vx`.
                 // Every sprite is 5 bytes large, and they are stored in the beginning of RAM as a
                 // linear array, so we could just do a multiplication, but let's invoke a function
                 // for now (FIXME).
 
                 let state = self.state_address();
-                let fptr = ext::binary_to_bcd as unsafe extern "C" fn(_, _);
+                let fptr = ext::hex_sprite_address as unsafe extern "C" fn(_, _);
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 false
             }
             (0xF, x, 0x3, 0x3) => {
-                trace!("-> LD B, V{:01X}", x);
+                debug!("-> LD B, V{:01X}", x);
                 // Store BCD representation of `Vx` in memory locations `I`, `I+1`, and `I+2`.
 
                 let state = self.state_address();
@@ -482,7 +482,7 @@ impl Jit {
                 true
             }
             (0xF, x, 0x5, 0x5) => {
-                trace!("-> LD [I], V{:01X}", x);
+                debug!("-> LD [I], V{:01X}", x);
 
                 // Store registers V0 through Vx to memory starting at location I. This can change
                 // CHIP-8 code we already compiled, so we need to invalidate these code segments.
@@ -497,7 +497,7 @@ impl Jit {
                 true    // We need to return to the dispatcher immediately
             }
             (0xF, x, 0x6, 0x5) => {
-                trace!("-> LD V{:01X}, [I]", x);
+                debug!("-> LD V{:01X}, [I]", x);
 
                 // Read registers V0 through Vx from memory starting at location I. We do this in
                 // Rust and just generate a call for now.
@@ -567,7 +567,7 @@ impl Jit {
 
         self.finalize_function();
 
-        trace!("jit completed, code dump: {}", hexdump(&self.code_buffer));
+        debug!("jit completed, code dump: {}", hexdump(&self.code_buffer));
 
         // Copy the code buffer into a memory region and make it executable:
         let mut mmap = Mmap::anonymous(self.code_buffer.len(), Protection::ReadWrite).unwrap();
@@ -915,7 +915,7 @@ impl Jit {
     /// Emits code to restore all saved host registers.
     fn emit_restore_regs(&mut self) {
         for host_reg in self.saved_host_regs.iter().rev() {
-            trace!("restore {:?}", host_reg);
+            debug!("restore {:?}", host_reg);
             // `pop <REG>`
             self.code_buffer.extend_from_slice(&[0x58 | host_reg.as_r32_value()]);
         }

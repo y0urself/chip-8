@@ -1,7 +1,10 @@
 use cache::CodeCache;
 
+use minifb::{Window, WindowOptions, Scale};
+
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::process;
 
 static CHIP8_FONT: [u8; 5 * 16] = [
     0xf0, 0x90, 0x90, 0x90, 0xf0,   // 0
@@ -59,6 +62,8 @@ pub struct ChipState {
     /// `i`. This must be checked after every block is executed.
     pub inv_len: u8,
 
+    pub win: Window,
+
     _priv: (),
 }
 
@@ -91,14 +96,54 @@ impl Chip8 {
                 sound_timer: 0,
                 fb: [false; 64 * 32],
                 inv_len: 0,
+                win: Window::new("KOOL-8", 64, 32, WindowOptions {
+                    borderless: false,
+                    title: true,
+                    resize: false,
+                    scale: Scale::FitScreen,
+                }).unwrap(),
                 _priv: (),
             })),
             cache: CodeCache::new(),
         }
     }
 
+    /// Called in intervals by the main loop
+    ///
+    /// FIXME We should dictate timing from here by forcing a 60 Hz execution interval and then
+    /// adjust BLOCKS_PER_TICK accordingly.
+    fn tick(&mut self) {
+        let mut state = self.state.borrow_mut();
+
+        if !state.win.is_open() {
+            info!("window closed, exiting");
+            process::exit(0);
+        }
+
+        // Render the screen
+        let mut screen_buf = [0u32; 64 * 32];
+        for (i, &pix) in state.fb.iter().enumerate() {
+            if pix {
+                screen_buf[i] = 0xffffffff;
+            }
+        }
+        state.win.update_with_buffer(&screen_buf);
+
+        // Decrease counters
+        if state.delay_timer > 0 {
+            state.delay_timer -= 1;
+        }
+        if state.sound_timer > 0 {
+            state.sound_timer -= 1;
+        }
+    }
+
     /// Begins execution of CHIP-8 instructions.
     pub fn run(&mut self) {
+        // We count the block we execute, and after we've run "enough", we'll do other tasks
+        let mut block_counter = 0;
+        const BLOCKS_PER_TICK: u32 = 4096;
+
         loop {
             trace!("@ {:04X}", self.state.borrow().pc);
 
@@ -107,13 +152,22 @@ impl Chip8 {
                 block.run();
             }
 
-            let mut state = self.state.borrow_mut();
-            let inv_start = state.i;
-            let inv_len = &mut state.inv_len;
-            if *inv_len != 0 {
-                // JIT cache invalidation required
-                self.cache.invalidate_range(inv_start, *inv_len as u16);
-                *inv_len = 0;
+            {
+                let mut state = self.state.borrow_mut();
+                let inv_start = state.i;
+                let inv_len = &mut state.inv_len;
+                if *inv_len != 0 {
+                    // JIT cache invalidation required
+                    self.cache.invalidate_range(inv_start, *inv_len as u16);
+                    *inv_len = 0;
+                }
+            }
+
+            block_counter += 1;
+
+            if block_counter >= BLOCKS_PER_TICK {
+                block_counter = 0;
+                self.tick();
             }
         }
     }

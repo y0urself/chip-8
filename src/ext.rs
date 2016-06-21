@@ -9,7 +9,29 @@
 use chip8::ChipState;
 
 use rand::random;
-use std::process::exit;
+use minifb::{Key, KeyRepeat};
+
+fn hexkey_to_key(key: u8) -> Key {
+    match key {
+        0x0 => Key::Key0,
+        0x1 => Key::Key1,
+        0x2 => Key::Key2,
+        0x3 => Key::Key3,
+        0x4 => Key::Key4,
+        0x5 => Key::Key5,
+        0x6 => Key::Key6,
+        0x7 => Key::Key7,
+        0x8 => Key::Key8,
+        0x9 => Key::Key9,
+        0xA => Key::A,
+        0xB => Key::B,
+        0xC => Key::C,
+        0xD => Key::D,
+        0xE => Key::E,
+        0xF => Key::F,
+        _ => panic!("invalid key {:01X}", key),
+    }
+}
 
 /// Implements the `RND` CHIP-8 instruction.
 ///
@@ -22,15 +44,21 @@ pub unsafe extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
 /// Implements the `SKP Vx` and `SKNP Vx` instructions.
 ///
 /// Returns `true` (`1`) when the key stored in `Vx` is pressed, `false` (`0`) if not.
-pub unsafe extern "C" fn key_pressed(_state: *mut ChipState, _x: u8) -> bool {
-    warn!("key_pressed unimplemented");
-    false
+pub unsafe extern "C" fn key_pressed(state: *mut ChipState, x: u8) -> bool {
+    let state = &mut *state;
+    let key = state.regs[x as usize] & 0xF;
+
+    state.win.is_key_down(hexkey_to_key(key))
 }
 
 /// Implements the `LD Vx, K` instruction.
-pub unsafe extern "C" fn wait_key_press(_state: *mut ChipState, _x: u8) {
-    warn!("wait_key_press unimplemented, entering infinite loop");
-    loop {}
+pub unsafe extern "C" fn wait_key_press(state: *mut ChipState, x: u8) {
+    let state = &mut *state;
+    for k in 0..16 {
+        if state.win.is_key_pressed(hexkey_to_key(k), KeyRepeat::No) {
+            state.regs[x as usize] = k;
+        }
+    }
 }
 
 /// Implements the `LD Vx, [I]` instruction.
@@ -91,7 +119,20 @@ pub unsafe extern "C" fn hex_sprite_address(state: *mut ChipState, x: u8) {
 pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
     debug!("{:?}: DRW V{:01X}, V{:01X}, {}", state, x, y, n);
 
-    // TODO
+    let state = &mut *state;
+    let x = state.regs[x as usize];
+    let y = state.regs[y as usize];
+
+    // FIXME: "If the sprite is positioned so part of it is outside the coordinates of the display,
+    // it wraps around to the opposite side of the screen.""
+    for i in 0..n {
+        // Draw 8-pixel sprite line to `x..x+8`
+        let data = state.mem[state.i as usize + i as usize];
+        for xoff in 0..8 {
+            // I as usize can't as usize understand as usize your accent as usize.
+            state.fb[(y as usize + i as usize) * 64 + x as usize + xoff as usize] = data & (0x80 >> xoff) != 0;
+        }
+    }
 }
 
 /// Implements `CLS`.
