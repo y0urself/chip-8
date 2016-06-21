@@ -13,6 +13,7 @@ env_logger = "0.3.3"
 fnv = "1.0.2"
 log = "0.3.6"
 minifb = "0.7.1"
+rand = "0.3.14"
 
 [dependencies.memmap]
 branch = "exec"

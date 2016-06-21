@@ -8,15 +8,15 @@
 
 use chip8::ChipState;
 
+use rand::random;
 use std::process::exit;
 
 /// Implements the `RND` CHIP-8 instruction.
 ///
 /// `RND Vx, kk` generates a random byte, ANDs it with `kk`, and stores the result in `Vx`.
-#[allow(unused)]    // FIXME
 pub unsafe extern "C" fn rand(state: *mut ChipState, x: u8, kk: u8) {
-    println!("rand unimplemented");
-    exit(102);
+    let state = &mut *state;
+    state.regs[x as usize] = random::<u8>() & kk;
 }
 
 /// Implements the `SKP Vx` and `SKNP Vx` instructions.

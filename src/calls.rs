@@ -15,6 +15,11 @@ impl Callable for unsafe extern "C" fn(*mut ChipState, u8, u8, u8) {
      fn get_addr(&self) -> u64 { *self as u64 }
 }
 
+impl Callable for unsafe extern "C" fn(*mut ChipState, u8, u8) {
+     fn param_count() -> u8 { 3 }
+     fn get_addr(&self) -> u64 { *self as u64 }
+}
+
 impl<T> Callable for unsafe extern "C" fn(*mut ChipState, u8) -> T {
      fn param_count() -> u8 { 2 }
      fn get_addr(&self) -> u64 { *self as u64 }

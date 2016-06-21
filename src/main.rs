@@ -7,6 +7,7 @@ extern crate clap;
 extern crate fnv;
 extern crate enum_set;
 extern crate minifb;
+extern crate rand;
 
 mod cache;
 mod calls;

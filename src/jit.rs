@@ -376,7 +376,12 @@ impl Jit {
             (0xC, x, _, _) => {
                 let k = instr & 0x00ff;
                 trace!("-> RND V{:01X}, {:02X}", x, k);
-                unimplemented!();
+
+                let state = self.state_address();
+                let fptr = ext::rand as unsafe extern "C" fn(_, _, _);  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64, x as u64, k as u64]);
+
+                false
             }
             (0xD, x, y, n) => {
                 trace!("-> DRW V{:01X}, V{:01X}, {:01X}", x, y, n);
