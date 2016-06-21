@@ -128,8 +128,9 @@ pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
         // Draw 8-pixel sprite line to `x..x+8`
         let data = state.mem[state.i as usize + i as usize];
         for xoff in 0..8 {
+            let x_total = (x + xoff) % 64;
             // I as usize can't as usize understand as usize your accent as usize.
-            let mut pixref = &mut state.fb[(y as usize + i as usize) * 64 + x as usize + xoff as usize];
+            let mut pixref = &mut state.fb[(y as usize + i as usize) * 64 + x_total as usize];
             let newval = data & (0x80 >> xoff) != 0;
             if *pixref && newval {
                 // Set pixel will be cleared

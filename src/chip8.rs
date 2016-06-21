@@ -139,8 +139,12 @@ impl Chip8 {
         }
 
         // Sleep so we tick at 60 Hz
-        let left_time = Duration::from_millis(1000 / 60) - self.last_tick.elapsed();
-        sleep(left_time);
+        let time_since_last_tick = self.last_tick.elapsed();
+        let frame_time = Duration::from_millis(1000 / 60);
+        if time_since_last_tick < frame_time {
+            let left_time = frame_time - time_since_last_tick;
+            sleep(left_time);
+        }
 
         self.last_tick = Instant::now();
     }
@@ -149,7 +153,7 @@ impl Chip8 {
     pub fn run(&mut self) {
         // We count the block we execute, and after we've run "enough", we'll do other tasks
         let mut block_counter = 0;
-        const BLOCKS_PER_TICK: u32 = 4096;
+        const BLOCKS_PER_TICK: u32 = 32;
 
         loop {
             trace!("@ {:04X}", self.state.borrow().pc);
