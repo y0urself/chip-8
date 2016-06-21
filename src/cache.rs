@@ -39,9 +39,8 @@ impl CodeCache {
         })
     }
 
-    #[allow(dead_code)] // FIXME
     pub fn invalidate_range(&mut self, start: u16, len: u16) {
-        debug!("invalidating range {:03X}..{:03X}", start, start + len);
+        trace!("invalidating range {:03X}..{:03X}", start, start + len);
 
         let end = start + len;
         // FIXME: This is slow, since it iterates over the whole cache and recreates the whole map.

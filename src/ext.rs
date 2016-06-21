@@ -9,7 +9,7 @@
 use chip8::ChipState;
 
 use rand::random;
-use minifb::{Key, KeyRepeat};
+use minifb::Key;    // XXX <- This enum is undocumented, I assume by accident?
 
 fn hexkey_to_key(key: u8) -> Key {
     match key {
@@ -54,9 +54,19 @@ pub unsafe extern "C" fn key_pressed(state: *mut ChipState, x: u8) -> bool {
 /// Implements the `LD Vx, K` instruction.
 pub unsafe extern "C" fn wait_key_press(state: *mut ChipState, x: u8) {
     let state = &mut *state;
-    for k in 0..16 {
-        if state.win.is_key_pressed(hexkey_to_key(k), KeyRepeat::No) {
-            state.regs[x as usize] = k;
+    loop {
+        state.win.update();
+
+        if !state.win.is_open() {
+            // The program will exit on the next tick
+            break;
+        }
+
+        for k in 0..16 {
+            if state.win.is_key_down(hexkey_to_key(k)) {
+                state.regs[x as usize] = k;
+                return;
+            }
         }
     }
 }
@@ -121,16 +131,16 @@ pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
     let x = state.regs[x as usize];
     let y = state.regs[y as usize];
 
-    // FIXME: "If the sprite is positioned so part of it is outside the coordinates of the display,
-    // it wraps around to the opposite side of the screen.""
     let mut cleared = false;
     for i in 0..n {
         // Draw 8-pixel sprite line to `x..x+8`
+        let y_total = (y + i) % 32;
+
         let data = state.mem[state.i as usize + i as usize];
         for xoff in 0..8 {
             let x_total = (x + xoff) % 64;
             // I as usize can't as usize understand as usize your accent as usize.
-            let mut pixref = &mut state.fb[(y as usize + i as usize) * 64 + x_total as usize];
+            let mut pixref = &mut state.fb[y_total as usize * 64 + x_total as usize];
             let newval = data & (0x80 >> xoff) != 0;
             if *pixref && newval {
                 // Set pixel will be cleared
