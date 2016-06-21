@@ -128,19 +128,19 @@ pub unsafe extern "C" fn hex_sprite_address(state: *mut ChipState, x: u8) {
 /// and `Vy`, and sets `VF` to 1 if a previously set pixel was unset, and to 0 if not (collision).
 pub unsafe extern "C" fn draw(state: *mut ChipState, x: u8, y: u8, n: u8) {
     let state = &mut *state;
-    let x = state.regs[x as usize];
-    let y = state.regs[y as usize];
+    let x = state.regs[x as usize] as usize;
+    let y = state.regs[y as usize] as usize;
 
     let mut cleared = false;
-    for i in 0..n {
+    for i in 0..n as usize {
         // Draw 8-pixel sprite line to `x..x+8`
         let y_total = (y + i) % 32;
 
         let data = state.mem[state.i as usize + i as usize];
         for xoff in 0..8 {
             let x_total = (x + xoff) % 64;
-            // I as usize can't as usize understand as usize your accent as usize.
-            let mut pixref = &mut state.fb[y_total as usize * 64 + x_total as usize];
+
+            let mut pixref = &mut state.fb[y_total * 64 + x_total];
             let newval = data & (0x80 >> xoff) != 0;
             if *pixref && newval {
                 // Set pixel will be cleared
