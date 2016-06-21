@@ -301,11 +301,19 @@ impl Jit {
             }
             (0x8, x, y, 0x1) => {
                 trace!("-> OR V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_reg_op(x, AluOp::Or, y);
+                false
             }
             (0x8, x, y, 0x2) => {
                 trace!("-> AND V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_reg_op(x, AluOp::And, y);
+                false
             }
             (0x8, x, y, 0x3) => {
                 trace!("-> XOR V{:01X}, V{:01X}", x, y);
@@ -440,7 +448,13 @@ impl Jit {
             }
             (0xF, x, 0x3, 0x3) => {
                 trace!("-> LD B, V{:01X}", x);
-                unimplemented!();
+                // Store BCD representation of `Vx` in memory locations `I`, `I+1`, and `I+2`.
+
+                let state = self.state_address();
+                let fptr = ext::binary_to_bcd as unsafe extern "C" fn(_, _);
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                true
             }
             (0xF, x, 0x5, 0x5) => {
                 trace!("-> LD [I], V{:01X}", x);

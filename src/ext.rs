@@ -47,8 +47,8 @@ pub unsafe extern "C" fn load_mem(state: *mut ChipState, x: u8) {
 ///
 /// Stores registers `V0` through `Vx` to memory starting at location `I`.
 ///
-/// Since this kind of write can overwrite machine code (not that it *should* do that), we might
-/// need to invalidate JIT-compiled code from that RAM section.
+/// Since this kind of write can overwrite machine code (not that it *should* do that), we need to
+/// invalidate JIT-compiled code from that RAM section.
 pub unsafe extern "C" fn store_mem(state: *mut ChipState, x: u8) {
     let state = &mut *state;
     for idx in 0..x+1 {
@@ -56,6 +56,21 @@ pub unsafe extern "C" fn store_mem(state: *mut ChipState, x: u8) {
     }
 
     state.inv_len = x + 1;
+}
+
+/// Implements the `LD B, Vx` instruction.
+///
+/// Stores the BCD representation of `Vx` in memory locations `I`, `I+1`, and `I+2`.
+///
+/// Since this also writes to memory, we need to invalidate the JIT cache.
+pub unsafe extern "C" fn binary_to_bcd(state: *mut ChipState, x: u8) {
+    let state = &mut *state;
+    let value = state.regs[x as usize];
+    state.mem[state.i as usize] = value / 100;
+    state.mem[state.i as usize + 1] = (value % 100) / 10;
+    state.mem[state.i as usize + 2] = value % 10;
+
+    state.inv_len = 3;
 }
 
 /// Implements the `DRW` instruction.
