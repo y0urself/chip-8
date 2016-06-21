@@ -325,14 +325,23 @@ impl Jit {
             }
             (0x8, x, y, 0x4) => {   // VF = Carry (0 or 1)
                 debug!("-> ADD V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let vf = self.get_host_reg_for(0xF);
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_reg_op(x, AluOp::Add, y);
+
+                // `setc <VF>`
+                self.emit_raw(&[0x0F, 0x92, 0xC0 | vf.as_reg_field_value()]);
+
+                false
             }
             (0x8, x, y, 0x5) => {   // VF = !Borrow
                 debug!("-> SUB V{:01X}, V{:01X}", x, y);
 
                 // For setting `VF`, we can use `setnc` (set byte if not carry - carry is borrow on
                 // x86). Note that `setnc` is the same thing as `setae` (above or equal).
-                let vf = self.get_host_reg_for(0xf);
+                let vf = self.get_host_reg_for(0xF);
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
                 self.emit_reg_op(x, AluOp::Sub, y);
@@ -344,7 +353,16 @@ impl Jit {
             }
             (0x8, x, y, 0x6) => {   // VF = LSb of Vx
                 debug!("-> SHR V{:01X}   ; V{:01X}", x, y);
-                unimplemented!();
+
+                let vf = self.get_host_reg_for(0xF);
+                let x = self.get_host_reg_for(x as u8);
+                // `shr <Vx>`
+                self.emit_raw(&[0xD0, 0xE8 | x.as_reg_field_value()]);
+
+                // `setc <VF>`
+                self.emit_raw(&[0x0F, 0x92, 0xC0 | vf.as_reg_field_value()]);
+
+                false
             }
             (0x8, x, y, 0x7) => {   // VF = !Borrow
                 debug!("-> SUBN V{:01X}, V{:01X}", x, y);
@@ -392,8 +410,17 @@ impl Jit {
                 false
             }
             (0xE, x, 0x9, 0xE) => {
-                debug!("-> SKP V{:01X}", x);
-                unimplemented!();
+                debug!("-> SKP V{:01X}", x);    // Skip if key pressed
+
+                // Call `ext::key_pressed` and check the returned value
+                let state = self.state_address();
+                let fptr = ext::key_pressed as unsafe extern "C" fn(_, _) -> bool;  // XXX this is dumb
+                self.emit_call(fptr, &[state as u64, x as u64]);
+
+                // If `al == 1 <=> al != 0`, the key isn't pressed, so we should skip
+                self.emit_skip_if_reg_cmp(X86Register::AL, ConditionCode::Neq, 0);
+
+                true
             }
             (0xE, x, 0xA, 0x1) => {
                 debug!("-> SKNP V{:01X}", x);   // Skip if key not pressed
