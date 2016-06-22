@@ -77,6 +77,14 @@ enum AluOp {
     Cmp = 7,
 }
 
+/// Abstracts immediate/register differences away.
+///
+/// This does not have the same meaning as an x86 operand.
+enum Operand {
+    Immediate(u8),
+    Register(X86Register),
+}
+
 /// Condition codes that can be checked by conditional branch x86 instructions.
 ///
 /// Not exhaustive, added to when needed.
@@ -256,7 +264,7 @@ impl Jit {
                 debug!("-> SE V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
-                self.emit_skip_if_reg_cmp(reg, ConditionCode::Eq, k as u8);
+                self.emit_skip_if(reg, ConditionCode::Eq, Operand::Immediate(k as u8));
 
                 true
             }
@@ -265,7 +273,7 @@ impl Jit {
                 debug!("-> SNE V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
-                self.emit_skip_if_reg_cmp(reg, ConditionCode::Neq, k as u8);
+                self.emit_skip_if(reg, ConditionCode::Neq, Operand::Immediate(k as u8));
 
                 true
             }
@@ -287,7 +295,7 @@ impl Jit {
                 debug!("-> ADD V{:01X}, {:02X}", x, k);
 
                 let reg = self.get_host_reg_for(x as u8);
-                self.emit_imm_op(reg, AluOp::Add, k as u8);
+                self.emit_op(reg, AluOp::Add, Operand::Immediate(k as u8));
                 false
             }
             (0x8, x, y, 0x0) => {
@@ -306,7 +314,7 @@ impl Jit {
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
-                self.emit_reg_op(x, AluOp::Or, y);
+                self.emit_op(x, AluOp::Or, Operand::Register(y));
                 false
             }
             (0x8, x, y, 0x2) => {
@@ -314,7 +322,7 @@ impl Jit {
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
-                self.emit_reg_op(x, AluOp::And, y);
+                self.emit_op(x, AluOp::And, Operand::Register(y));
                 false
             }
             (0x8, x, y, 0x3) => {
@@ -322,7 +330,7 @@ impl Jit {
 
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
-                self.emit_reg_op(x, AluOp::Xor, y);
+                self.emit_op(x, AluOp::Xor, Operand::Register(y));
                 false
             }
             (0x8, x, y, 0x4) => {   // VF = Carry (0 or 1)
@@ -331,7 +339,7 @@ impl Jit {
                 let vf = self.get_host_reg_for(0xF);
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
-                self.emit_reg_op(x, AluOp::Add, y);
+                self.emit_op(x, AluOp::Add, Operand::Register(y));
 
                 // `setc <VF>`
                 self.emit_raw(&[0x0F, 0x92, 0xC0 | vf.as_reg_field_value()]);
@@ -346,7 +354,7 @@ impl Jit {
                 let vf = self.get_host_reg_for(0xF);
                 let x = self.get_host_reg_for(x as u8);
                 let y = self.get_host_reg_for(y as u8);
-                self.emit_reg_op(x, AluOp::Sub, y);
+                self.emit_op(x, AluOp::Sub, Operand::Register(y));
 
                 // `setnc <VF>`
                 self.emit_raw(&[0x0F, 0x93, 0xC0 | vf.as_reg_field_value()]);
@@ -372,11 +380,25 @@ impl Jit {
             }
             (0x8, x, y, 0xE) => {   // VF = MSb of Vx
                 debug!("-> SHL V{:01X}   ; V{:01X}", x, y);
-                unimplemented!();
+
+                let vf = self.get_host_reg_for(0xF);
+                let x = self.get_host_reg_for(x as u8);
+                // `shl <Vx>`
+                self.emit_raw(&[0xD0, 0xE0 | x.as_reg_field_value()]);
+
+                // `setc <VF>`
+                self.emit_raw(&[0x0F, 0x92, 0xC0 | vf.as_reg_field_value()]);
+
+                false
             }
             (0x9, x, y, 0x0) => {
                 debug!("-> SNE V{:01X}, V{:01X}", x, y);
-                unimplemented!();
+
+                let x = self.get_host_reg_for(x as u8);
+                let y = self.get_host_reg_for(y as u8);
+                self.emit_skip_if(x, ConditionCode::Neq, Operand::Register(y));
+
+                true
             }
             (0xA, _, _, _) => {
                 let nnn = instr & 0x0fff;
@@ -420,7 +442,7 @@ impl Jit {
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 // If `al == 1 <=> al != 0`, the key isn't pressed, so we should skip
-                self.emit_skip_if_reg_cmp(X86Register::AL, ConditionCode::Neq, 0);
+                self.emit_skip_if(X86Register::AL, ConditionCode::Neq, Operand::Immediate(0));
 
                 true
             }
@@ -433,7 +455,7 @@ impl Jit {
                 self.emit_call(fptr, &[state as u64, x as u64]);
 
                 // If `al == 0`, the key isn't pressed, so we should skip
-                self.emit_skip_if_reg_cmp(X86Register::AL, ConditionCode::Eq, 0);
+                self.emit_skip_if(X86Register::AL, ConditionCode::Eq, Operand::Immediate(0));
 
                 true
             }
@@ -706,11 +728,64 @@ impl Jit {
         }
     }
 
+    fn state(&self) -> Ref<ChipState> {
+        self.state_rc.borrow()
+    }
+
+    /// Get the address of the `ChipState` structure to use in the compiled code.
+    fn state_address(&self) -> *const ChipState {
+        &*self.state_rc.borrow()
+    }
+
+    /// Calculate an offset into the `ChipState`.
+    fn calc_offset<T, F: FnOnce(&ChipState) -> &T>(&self, f: F) -> Offset<T> {
+        let state = self.state();
+        let addr = f(&state) as *const T as usize;
+
+        let state_addr = self.state_address() as usize;
+        assert!(state_addr <= addr);
+
+        Offset {
+            bytes: addr - state_addr,
+            _p: PhantomData,
+        }
+    }
+
+    /// Emits raw bytes as machine code. Use with care!
+    ///
+    /// Consult your local therapist for information about x86 instructon encoding.
+    fn emit_raw(&mut self, code: &[u8]) {
+        self.code_buffer.extend_from_slice(code);
+    }
+
+    fn emit_op(&mut self, dest: X86Register, op: AluOp, src: Operand) {
+        match src {
+            Operand::Immediate(imm) => {
+                // See http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm
+                self.emit_raw(&[
+                    0x80,
+                    (0b11 << 6) | ((op as u8) << 3) | dest.as_reg_field_value(),
+                    imm
+                ]);
+            }
+            Operand::Register(src) => {
+                // Turning an `AluOp` into an instruction is simple: `AluOp << 3` gives us the first
+                // byte, the second byte is a ModR/M byte storing the source register (second
+                // operand) in the `REG` field and the destination register (first operand) in
+                // `R/M`. `MOD` is `0b11` to indicate a reg-reg operation.
+                self.emit_raw(&[
+                    (op as u8) << 3,
+                    (0b11 << 6) | (src.as_reg_field_value() << 3) | dest.as_reg_field_value()
+                ]);
+            }
+        }
+    }
+
     /// Emits code to compare `reg` against `value` and load PC with `self.pc` or `self.pc + 2`
     /// depending on a `ConditionCode`.
     ///
     /// This should only be used for terminating instructions.
-    fn emit_skip_if_reg_cmp(&mut self, reg: X86Register, cc: ConditionCode, value: u8) {
+    fn emit_skip_if(&mut self, reg: X86Register, cc: ConditionCode, value: Operand) {
         // We'll use `di` as a scratch register for PC. Start by loading `self.pc + 2` into `di`
         // (assuming the test succeeds and we need to skip), then perform the comparison and cond.
         // branch over code that loads `self.pc` into `di` (in case the branch condition is not
@@ -721,7 +796,7 @@ impl Jit {
         self.code_buffer.write_u16::<LittleEndian>(self.pc + 2).unwrap();
 
         // `cmp <REG>, <VAL>`
-        self.emit_raw(&[0x80, 0xF8 | reg.as_reg_field_value(), value]);
+        self.emit_op(reg, AluOp::Cmp, value);
 
         // Skip the `self.pc` load if the given `ConditionCode` is fullfilled.
         // `jX +<DIST>`
@@ -789,55 +864,6 @@ impl Jit {
         self.emit_raw(&[0x40, 0x08, 0xDC]); // `or spl, bl`
 
         self.emit_rsi_restore();
-    }
-
-    fn state(&self) -> Ref<ChipState> {
-        self.state_rc.borrow()
-    }
-
-    /// Get the address of the `ChipState` structure to use in the compiled code.
-    fn state_address(&self) -> *const ChipState {
-        &*self.state_rc.borrow()
-    }
-
-    /// Calculate an offset into the `ChipState`.
-    fn calc_offset<T, F: FnOnce(&ChipState) -> &T>(&self, f: F) -> Offset<T> {
-        let state = self.state();
-        let addr = f(&state) as *const T as usize;
-
-        let state_addr = self.state_address() as usize;
-        assert!(state_addr <= addr);
-
-        Offset {
-            bytes: addr - state_addr,
-            _p: PhantomData,
-        }
-    }
-
-    /// Emits raw bytes as machine code. Use with care!
-    ///
-    /// Consult your local therapist for information about x86 instructon encoding.
-    fn emit_raw(&mut self, code: &[u8]) {
-        self.code_buffer.extend_from_slice(code);
-    }
-
-    /// Emits an arithmetic/logic operation using an immediate as the second operand.
-    ///
-    /// See http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm
-    fn emit_imm_op(&mut self, reg: X86Register, op: AluOp, imm: u8) {
-        self.emit_raw(&[0x80, (0b11 << 6) | ((op as u8) << 3) | reg.as_reg_field_value(), imm]);
-    }
-
-    /// Emits an arithmetic/logic operation on two registers, storing the result in the first one.
-    fn emit_reg_op(&mut self, dest: X86Register, op: AluOp, src: X86Register) {
-        // Turning an `AluOp` into an instruction is simple: `AluOp << 3` gives us the first byte,
-        // the second byte is a ModR/M byte storing the source register (second operand) in the
-        // `REG` field and the destination register (first operand) in `R/M`. `MOD` is `0b11` to
-        // indicate a reg-reg operation.
-        self.emit_raw(&[
-            (op as u8) << 3,
-            (0b11 << 6) | (src.as_reg_field_value() << 3) | dest.as_reg_field_value()
-        ]);
     }
 
     /// Emits code to load a `u8` from the given `ChipState` field into a register.
