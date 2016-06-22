@@ -31,6 +31,12 @@ const RAM_SIZE: usize = 4096;
 /// Program start address in RAM
 const PROGRAM_START: usize = 0x200;
 
+/// CPU clock frequency in Hz
+const FREQ_HZ: u32 = 600;
+
+/// CHIP-8 instructions we should execute per tick
+const OPS_PER_TICK: u32 = FREQ_HZ / 60;
+
 /// CHIP-8 state, also accessed by JITted code, so must always have a fixed address.
 #[repr(C)]
 pub struct ChipState {
@@ -76,6 +82,7 @@ pub struct Chip8 {
     state: Rc<RefCell<ChipState>>,
     cache: CodeCache,
     last_tick: Instant,
+    ops: i32,
 }
 
 impl Chip8 {
@@ -113,6 +120,7 @@ impl Chip8 {
             })),
             cache: CodeCache::new(),
             last_tick: Instant::now(),
+            ops: 0,
         }
     }
 
@@ -151,20 +159,22 @@ impl Chip8 {
         }
 
         self.last_tick = Instant::now();
+
+        // Print timing info
+        trace!("ran at {} ops/second", self.ops * 60);
+        self.ops = 0;
     }
 
     /// Begins execution of CHIP-8 instructions.
     pub fn run(&mut self) {
-        // We count the block we execute, and after we've run "enough", we'll do other tasks
-        let mut block_counter = 0;
-        const BLOCKS_PER_TICK: u32 = 32;
-
         loop {
             trace!("@ {:04X}", self.state.borrow().pc);
 
             {
                 let block = self.cache.get_or_compile_block(&self.state);
                 block.run();
+
+                self.ops += block.len as i32 / 2;
             }
 
             {
@@ -178,11 +188,9 @@ impl Chip8 {
                 }
             }
 
-            block_counter += 1;
-
-            if block_counter >= BLOCKS_PER_TICK {
-                block_counter = 0;
+            while self.ops >= OPS_PER_TICK as i32 {
                 self.tick();
+                self.ops -= OPS_PER_TICK as i32;
             }
         }
     }

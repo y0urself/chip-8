@@ -58,7 +58,8 @@ pub unsafe extern "C" fn wait_key_press(state: *mut ChipState, x: u8) {
         state.win.update();
 
         if !state.win.is_open() {
-            // The program will exit on the next tick
+            // The program will exit on the next tick.
+            // XXX Note that this isn't really correct since we don't store a value in the reg!
             break;
         }
 
