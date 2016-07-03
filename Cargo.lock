@@ -9,7 +9,7 @@ dependencies = [
  "env_logger 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "memmap 0.3.0 (git+https://github.com/jonas-schievink/memmap-rs.git?branch=exec)",
+ "memmap 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "minifb 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -193,8 +193,8 @@ dependencies = [
 
 [[package]]
 name = "memmap"
-version = "0.3.0"
-source = "git+https://github.com/jonas-schievink/memmap-rs.git?branch=exec#2e421b1da7fff113788a6663be22783745db4bde"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "fs2 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",

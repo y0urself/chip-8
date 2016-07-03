@@ -12,9 +12,6 @@ enum-set = "0.0.6"
 env_logger = "0.3.3"
 fnv = "1.0.2"
 log = "0.3.6"
+memmap = "0.4.0"
 minifb = "0.7.1"
 rand = "0.3.14"
-
-[dependencies.memmap]
-branch = "exec"
-git = "https://github.com/jonas-schievink/memmap-rs.git"
