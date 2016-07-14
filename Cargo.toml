@@ -1,8 +1,9 @@
 [package]
 authors = ["Jonas Schievink <jonas@schievink.net>"]
-description = "My odd way of learning JITs and Vulkan ¯\\_(ツ)_/¯"
+description = "My odd way of learning JITs ¯\\_(ツ)_/¯"
 name = "chip-8"
 version = "0.1.0"
+license = "CC0-1.0"
 
 [dependencies]
 byteorder = "0.5.3"
