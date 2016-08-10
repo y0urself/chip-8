@@ -1,5 +1,5 @@
 [package]
-authors = ["Jonas Schievink <jonas@schievink.net>"]
+authors = ["Jonas Schievink <jonasschievink@gmail.com>"]
 description = "My odd way of learning JITs ¯\\_(ツ)_/¯"
 name = "chip-8"
 version = "0.1.0"
