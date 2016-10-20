@@ -14,8 +14,8 @@
 use calls::{self, Callable};
 use chip8::ChipState;
 use reg::X86Register;
-use hexdump::hexdump;
 use ext;
+use utils;
 
 use byteorder::{LittleEndian, BigEndian, WriteBytesExt, ReadBytesExt};
 use memmap::{Mmap, Protection};
@@ -629,7 +629,7 @@ impl Jit {
 
         self.finalize_function();
 
-        debug!("jit completed, code dump: {}", hexdump(&self.code_buffer));
+        debug!("jit completed, code dump: {}", utils::hexdump(&self.code_buffer));
 
         // Copy the code buffer into a memory region and make it executable:
         let mut mmap = Mmap::anonymous(self.code_buffer.len(), Protection::ReadWrite).unwrap();
@@ -821,7 +821,7 @@ impl Jit {
     /// Before a function call can be performed, we need write all allocated registers to the
     /// `ChipState` and deallocate them to ensure consistency.
     fn emit_call<C: Callable>(&mut self, callee: C, args: &[u64]) {
-        debug!("call {:p} ({})", callee.get_addr() as *const (), hexdump(args));
+        debug!("call {:p} ({})", callee.get_addr() as *const (), utils::hexdump(args));
         assert_eq!(C::param_count() as usize, args.len());
 
         // Write registers to the `ChipState`, so the callee can access consistent data.

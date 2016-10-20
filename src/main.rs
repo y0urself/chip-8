@@ -9,11 +9,12 @@ extern crate enum_set;
 extern crate minifb;
 extern crate rand;
 
+#[macro_use]
+mod utils;
 mod cache;
 mod calls;
 mod chip8;
 mod ext;
-mod hexdump;
 mod jit;
 mod reg;
 
@@ -46,7 +47,7 @@ fn main() {
     match run(&args) {
         Ok(()) => {}
         Err(e) => {
-            println!("error: {}", e);
+            errprintln!("error: {}", e);
         }
     }
 }
