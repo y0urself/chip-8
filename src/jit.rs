@@ -63,7 +63,7 @@ struct Offset<T> {
 
 /// Arithmetic/Logic operations.
 ///
-/// For informations about the encoding of operations on immediates, see
+/// For information about the encoding of operations on immediates, see
 /// http://www.c-jump.com/CIS77/CPU/x86/X77_0210_encoding_add_immediate.htm.
 #[allow(dead_code)] // FIXME
 enum AluOp {
@@ -571,8 +571,7 @@ impl Jit {
                 false
             }
             _ => {
-                warn!("ignoring unknown instruction ${:04X}", instr);
-                false
+                panic!("unknown instruction ${:04X}", instr);
             }
         }
     }
